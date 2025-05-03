@@ -35,7 +35,7 @@ logs/
 
 # Task Master Generated Files
 tasks.json # Main task list file (often checked in)
-tasks/ # Individual markdown task files (usually generated, ignored)
+# tasks/ # Individual markdown task files (usually generated, ignored)
 scripts/task-complexity-report.json # Generated report
 
 # Dependency directories
@@ -46,6 +46,7 @@ node_modules/
 
 # Task files
 tasks.json
+/tasks/ # Explicitly ignore tasks directory to prevent public exposure
 
 # New additions from the code block
 npm-debug.log*
