@@ -1,0 +1,14 @@
+policies:
+  - id: example-001
+    name: "Example Policy"
+    description: "A simple example policy for validation."
+    enabled: true
+    target: {}
+    conditions:
+      - type: "time_in_state"
+        operator: ">="
+        value: "1 hour"
+    actions:
+      - type: "log"
+        level: "INFO"
+        message: "Example policy triggered for agent {{ agent.id }}." 

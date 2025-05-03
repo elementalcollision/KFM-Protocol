@@ -1,0 +1,28 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+httpx>=0.28.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+starlette>=0.46.0
+typing-extensions>=4.0.0
+uuid>=1.30
+redis>=5.0.0
+aioredis>=2.0.1
+pytest-asyncio>=0.26.0
+pydantic-settings>=2.0.0
+python-json-logger>=2.0.7
+
+# Monitoring
+prometheus-fastapi-instrumentator>=6.0.0
+
+# Tracing
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.41b0
+opentelemetry-instrumentation-httpx>=0.41b0
+opentelemetry-exporter-otlp-proto-http>=1.20.0
+
+# Security (Example - Add if needed)
+# python-jose[cryptography]>=3.3.0
+# passlib[bcrypt]>=1.7.4
+

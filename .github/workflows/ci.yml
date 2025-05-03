@@ -1,0 +1,40 @@
+name: CI Checks
+
+on:
+  push:
+    branches: [ "main", "develop" ] # Or your primary branches
+    paths:
+      - 'policies/**'
+      - 'policy_engine/**'
+      - 'scripts/validate_policies.py'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [ "main", "develop" ] # Or your primary branches
+    paths:
+      - 'policies/**'
+      - 'policy_engine/**'
+      - 'scripts/validate_policies.py'
+
+jobs:
+  validate-policies:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11' # Use the Python version your project uses
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install PyYAML pydantic
+        # Add other project dependencies if needed for policy_engine imports
+        # e.g., if policy_engine models depend on other project parts:
+        # pip install -r requirements.txt
+
+    - name: Validate Policy Files
+      run: python scripts/validate_policies.py 

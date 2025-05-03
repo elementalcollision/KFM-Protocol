@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: kfm-observability
+  labels:
+    app: prometheus
+  # Optional: Add annotations for scraping Prometheus itself via the Service
+  # annotations:
+  #   prometheus.io/scrape: 'true'
+  #   prometheus.io/port: '9090' 
+spec:
+  selector:
+    app: prometheus # Selects the Prometheus pod(s)
+  ports:
+    - name: http
+      protocol: TCP
+      port: 9090       # Port the service listens on
+      targetPort: 9090 # Port the Prometheus container listens on
+  # Expose internally, use NodePort/LoadBalancer/Ingress for external UI access
+  type: ClusterIP 

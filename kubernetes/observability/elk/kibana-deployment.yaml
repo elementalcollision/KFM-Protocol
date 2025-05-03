@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:8.9.0 # Match version with other ELK components
+        ports:
+        - containerPort: 5601
+          name: http
+        env:
+          # Point Kibana to the Elasticsearch service
+          - name: ELASTICSEARCH_HOSTS
+            value: '["http://elasticsearch-service.kfm-observability.svc.cluster.local:9200"]'
+          # Optional: Add other Kibana config via env vars if needed
+          # - name: SERVER_NAME
+          #   value: kibana.kfm.local
+          # Disable security for simplicity (aligns with Elasticsearch config)
+          # If Elasticsearch has security enabled, configure Kibana accordingly
+          - name: ELASTICSEARCH_USERNAME
+            value: ""
+          - name: ELASTICSEARCH_PASSWORD
+            value: ""
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        readinessProbe:
+          httpGet:
+            path: /api/status # Kibana status endpoint
+            port: 5601
+          initialDelaySeconds: 45 # Kibana can take longer to start
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/status
+            port: 5601
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          failureThreshold: 3 

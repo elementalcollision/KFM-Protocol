@@ -1,0 +1,35 @@
+fastapi>=0.95.0
+uvicorn[standard]>=0.21.0
+SQLAlchemy[asyncio]>=2.0.0
+asyncpg>=0.27.0 # Async driver for PostgreSQL
+psycopg2-binary>=2.9.0 # Standard sync driver (often needed by Alembic)
+alembic>=1.10.0
+python-dotenv>=1.0.0
+pydantic[email]>=2.0.0
+
+# Security / JWT
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Logging
+python-json-logger>=2.0.7
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+httpx>=0.23.0 # For async HTTP requests in tests
+
+redis[hiredis]>=5.0.0 # For caching discovery results
+# Add prometheus_client if not already present for metrics
+# prometheus-client>=0.19.0
+
+tenacity>=8.2.0 # For retry logic in webhook notifications
+
+prometheus-fastapi-instrumentator>=6.0.0 # For Prometheus metrics 
+
+# Tracing
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.41b0
+opentelemetry-instrumentation-httpx>=0.41b0
+opentelemetry-exporter-otlp-proto-http>=1.20.0 

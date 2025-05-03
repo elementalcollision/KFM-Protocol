@@ -1,0 +1,1159 @@
+# Task ID: 6
+# Title: Develop F (Fuck) Operator Service
+# Status: done
+# Dependencies: 3, 4
+# Priority: medium
+# Description: Implement the service that handles adaptation, experimentation, and mutation operations for entities.
+# Details:
+Create a service implementing the F operator functionality from section 4.2. Develop endpoints for triggering adaptation operations (POST /agents/{id}/adapt). Implement version control integration for code-based entities (Git integration). Create interfaces for model adaptation (retraining, fine-tuning) for AI entities. Implement an experimentation framework with feature flags and sandboxed environments. Support recombination/composition of agents through appropriate interfaces. Ensure all F operations maintain proper versioning and provenance tracking. Implement appropriate controls for operations on STABLE entities.
+
+# Test Strategy:
+Test adaptation endpoints with different entity types. Verify version control operations work correctly. Test the experimentation framework with feature flags. Verify sandboxed environments isolate experimental changes. Test composition interfaces between agents. Verify stricter controls are enforced for STABLE entities.
+
+# Subtasks:
+## 1. Implement Core F Operator Service Framework [done]
+### Dependencies: None
+### Description: Create the foundational service structure with basic endpoints and entity management capabilities
+### Details:
+Develop the core service framework using a microservices architecture pattern. Implement the basic service structure with dependency injection, configuration management, and logging. Create the main controller with the primary endpoint for adaptation operations (POST /agents/{id}/adapt). Set up the service interfaces that will be implemented by specific operator types. Establish the entity model that supports different entity types (code-based, AI-based, etc.). Implement basic error handling and response formatting. This foundation should be designed with high availability in mind, potentially using redundant hosts across multiple availability zones.
+
+<info added on 2025-05-01T14:17:42.341Z>
+```python
+# Implementation Details
+
+## Core Service Framework
+
+### Dependency Injection Setup
+```python
+# app/dependencies.py
+from functools import lru_cache
+from typing import Dict, Type
+
+from fastapi import Depends
+
+from app.core.config import get_settings, Settings
+from app.services.adaptation_interface import (
+    AdaptationInterface,
+    CodeAdaptationService,
+    AIModelAdaptationService
+)
+
+@lru_cache()
+def get_adaptation_service_map() -> Dict[str, Type[AdaptationInterface]]:
+    """Returns a mapping of adaptation types to their service implementations."""
+    return {
+        "code": CodeAdaptationService,
+        "ai_model": AIModelAdaptationService,
+        # Additional adaptation types can be registered here
+    }
+
+def get_adaptation_service(
+    adaptation_type: str,
+    settings: Settings = Depends(get_settings)
+) -> AdaptationInterface:
+    """Factory function to get the appropriate adaptation service."""
+    service_map = get_adaptation_service_map()
+    if adaptation_type not in service_map:
+        raise ValueError(f"Unsupported adaptation type: {adaptation_type}")
+    
+    return service_map[adaptation_type](settings)
+```
+
+### Error Handling Implementation
+```python
+# app/core/exceptions.py
+from fastapi import HTTPException, status
+
+class AdaptationError(Exception):
+    """Base exception for adaptation errors."""
+    pass
+
+class EntityNotFoundError(AdaptationError):
+    """Raised when an entity cannot be found."""
+    pass
+
+class UnsupportedAdaptationTypeError(AdaptationError):
+    """Raised when an unsupported adaptation type is requested."""
+    pass
+
+# app/api/error_handlers.py
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+
+from app.core.exceptions import AdaptationError, EntityNotFoundError, UnsupportedAdaptationTypeError
+
+async def adaptation_exception_handler(request: Request, exc: AdaptationError):
+    """Handle adaptation-related exceptions."""
+    if isinstance(exc, EntityNotFoundError):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": str(exc)}
+        )
+    elif isinstance(exc, UnsupportedAdaptationTypeError):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": str(exc)}
+        )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An error occurred during adaptation"}
+    )
+```
+
+### Service Interface Enhancement
+```python
+# app/services/adaptation_interface.py (extended)
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional
+import logging
+
+from app.core.config import Settings
+from app.schemas.adaptation import AdaptationRequest, AdaptationResponse
+
+class AdaptationInterface(ABC):
+    """Interface for adaptation services."""
+    
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    @abstractmethod
+    async def adapt(self, agent_id: str, request: AdaptationRequest) -> AdaptationResponse:
+        """Perform adaptation for the specified agent."""
+        pass
+    
+    @abstractmethod
+    async def validate_request(self, agent_id: str, request: AdaptationRequest) -> bool:
+        """Validate the adaptation request."""
+        pass
+    
+    async def log_adaptation_attempt(self, agent_id: str, request: AdaptationRequest, result: Optional[Dict[str, Any]] = None):
+        """Log adaptation attempt for auditing and monitoring."""
+        self.logger.info(
+            "Adaptation attempt",
+            extra={
+                "agent_id": agent_id,
+                "adaptation_type": request.adaptation_type,
+                "parameters": request.parameters,
+                "result": result or {}
+            }
+        )
+```
+
+### High Availability Configuration
+```python
+# docker-compose.yml (partial)
+version: '3.8'
+
+services:
+  f-operator-service:
+    build: ./f_operator_service
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    environment:
+      - LOG_LEVEL=info
+```
+
+### Health Check Endpoint
+```python
+# app/api/endpoints/health.py
+from fastapi import APIRouter, Depends
+
+from app.core.config import get_settings, Settings
+
+router = APIRouter()
+
+@router.get("/health")
+async def health_check(settings: Settings = Depends(get_settings)):
+    """Health check endpoint for service monitoring."""
+    return {
+        "status": "healthy",
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT
+    }
+```
+</info added on 2025-05-01T14:17:42.341Z>
+
+## 2. Implement Version Control Integration for Code-Based Entities [done]
+### Dependencies: 6.1
+### Description: Develop Git integration for code-based entities to enable version-controlled adaptations
+### Details:
+Create a Git integration service that can clone, branch, commit, and push changes to repositories. Implement interfaces for different Git providers (GitHub, GitLab, Bitbucket). Develop mechanisms to checkout specific versions, create feature branches for experiments, and merge successful adaptations back to main branches. Implement secure credential management for Git operations. Create a versioning strategy that maintains proper lineage of adaptations. Ensure all Git operations are properly logged and can be traced back to specific adaptation requests. Include functionality to handle merge conflicts and provide appropriate feedback to callers.
+
+<info added on 2025-05-01T14:19:33.955Z>
+## Implementation Plan for Git Integration Service
+
+### Core Components
+1. **Provider-Specific Adapters**:
+   ```python
+   class GitProviderAdapter(ABC):
+       @abstractmethod
+       def authenticate(self) -> None: pass
+       
+       @abstractmethod
+       def get_default_branch(self, repo_url: str) -> str: pass
+   
+   class GitHubAdapter(GitProviderAdapter):
+       def __init__(self, access_token: str):
+           self.github = Github(access_token)
+   
+   class GitLabAdapter(GitProviderAdapter):
+       def __init__(self, access_token: str):
+           self.gitlab = Gitlab(url='https://gitlab.com', private_token=access_token)
+   ```
+
+2. **Conflict Resolution Strategy**:
+   - Implement automatic conflict resolution for non-critical conflicts using strategies:
+     ```python
+     def resolve_conflicts(self, repo, strategy='ours'):
+         """Resolve conflicts using specified strategy (ours, theirs, or manual)"""
+         if strategy == 'ours':
+             repo.git.checkout('--ours', '.')
+             repo.git.add('.')
+             return True
+         elif strategy == 'theirs':
+             repo.git.checkout('--theirs', '.')
+             repo.git.add('.')
+             return True
+         return False  # Manual resolution required
+     ```
+
+3. **Version Lineage Tracking**:
+   - Store metadata in commit messages using structured format:
+     ```
+     [ADAPT-{adaptation_id}] {description}
+     
+     Adaptation-Type: {type}
+     Parent-Adaptation: {parent_id}
+     Metrics: {performance_metrics}
+     ```
+
+### Security Considerations
+- Implement token rotation for long-running services
+- Use dedicated service accounts with minimal permissions
+- Store credentials in environment-specific secret stores (AWS Secrets Manager, HashiCorp Vault)
+- Sanitize all user inputs before using in Git commands to prevent command injection
+
+### Performance Optimizations
+- Implement shallow clones for large repositories: `git.Repo.clone_from(url, path, depth=1)`
+- Use sparse-checkout for monorepos to fetch only relevant directories
+- Implement local caching of repositories with periodic garbage collection
+
+### Testing Strategy
+- Create mock Git repositories with pre-defined states for unit testing
+- Test conflict scenarios with deliberately conflicting changes
+- Verify proper cleanup of temporary repositories
+</info added on 2025-05-01T14:19:33.955Z>
+
+## 3. Develop AI Model Adaptation Interfaces [done]
+### Dependencies: 6.1
+### Description: Create interfaces and implementations for AI model adaptation operations including retraining and fine-tuning
+### Details:
+Implement interfaces for different types of AI model adaptations including retraining and fine-tuning. Create adapters for common ML frameworks and platforms. Develop mechanisms to track model lineage and versioning. Implement model metadata management to store information about training data, hyperparameters, and performance metrics. Create interfaces for triggering model training jobs on appropriate compute resources. Implement model validation mechanisms to ensure adapted models meet quality thresholds before deployment. Design the system to handle both synchronous and asynchronous adaptation operations, with appropriate status tracking and notification mechanisms.
+
+<info added on 2025-05-01T14:30:30.995Z>
+# Implementation Plan for AI Model Adaptation Interfaces
+
+## Core Architecture Components
+
+### Adapter Pattern Implementation
+- Use the Strategy pattern for swappable AI framework adapters
+- Implement a factory method `get_adapter(adapter_type: str) -> AIAdapterInterface` to instantiate appropriate adapters
+- Support adapter registration through a decorator pattern: `@register_adapter("huggingface")`
+
+### Model Lineage Tracking
+- Implement `ModelLineage` class with DAG structure to track parent-child relationships
+- Store lineage metadata in MongoDB with references to parent models
+- Include provenance data: source datasets, transformation operations, and adaptation parameters
+
+### Technical Implementation Details
+
+```python
+# Example adapter interface with type hints
+class AIAdapterInterface(ABC):
+    @abstractmethod
+    async def trigger_training_job(self, request: TrainingJobRequest) -> str:
+        """Triggers training job and returns job_id"""
+        pass
+        
+    @abstractmethod
+    async def validate_model(self, model_id: str, validation_dataset: str, 
+                            metrics: List[str]) -> Dict[str, float]:
+        """Validates model against dataset and returns performance metrics"""
+        pass
+```
+
+```python
+# Example model metadata schema
+class ModelMetadata(BaseModel):
+    model_id: str
+    base_model: Optional[str]
+    framework: str
+    training_data: List[DatasetReference]
+    hyperparameters: Dict[str, Any]
+    performance_metrics: Dict[str, float]
+    created_at: datetime
+    parent_model_id: Optional[str]
+    lineage_id: str
+    tags: List[str] = []
+```
+
+## Asynchronous Processing Architecture
+- Implement job queue using Redis or RabbitMQ for async training operations
+- Create background worker process using Celery for long-running adaptation tasks
+- Implement webhook callbacks for job completion notifications
+- Design polling endpoint with exponential backoff for status checks
+
+## Framework-Specific Adapter Considerations
+- HuggingFace: Use Transformers library's Trainer API with custom callbacks
+- SageMaker: Implement S3 artifact storage and IAM role-based authentication
+- TensorFlow: Support SavedModel format and TF Serving integration
+- PyTorch: Implement ONNX export functionality for cross-platform compatibility
+
+## Validation and Quality Assurance
+- Implement A/B testing capability between original and adapted models
+- Support configurable validation thresholds (accuracy, latency, memory usage)
+- Create model card generation for documentation of model characteristics
+</info added on 2025-05-01T14:30:30.995Z>
+
+## 4. Implement Experimentation Framework with Feature Flags [done]
+### Dependencies: 6.1, 6.2, 6.3
+### Description: Create a framework for controlled experimentation with feature flags and sandboxed environments
+### Details:
+Develop an experimentation framework that supports A/B testing and canary deployments. Implement a feature flag system that can dynamically enable/disable features at runtime. Create sandboxed environments for safely testing adaptations without affecting production systems. Implement experiment configuration management to define experiment parameters, success criteria, and duration. Develop metrics collection for experiment evaluation. Create APIs for starting, monitoring, and concluding experiments. Implement rollback mechanisms for failed experiments. Design the framework to support both automated and manual decision-making for experiment outcomes.
+
+<info added on 2025-05-01T14:35:12.580Z>
+## Implementation Details for Experimentation Framework
+
+### Feature Flag System Implementation
+```python
+# services/feature_flag_service.py
+class FeatureFlagService:
+    def __init__(self, config):
+        self.flags = config.feature_flags
+        self.dynamic_flags = {}  # Runtime-updated flags
+        
+    async def is_flag_active(self, flag_name: str, context: dict = None) -> bool:
+        # Check dynamic flags first (experiment overrides)
+        if flag_name in self.dynamic_flags:
+            return self._evaluate_flag(self.dynamic_flags[flag_name], context)
+            
+        # Fall back to config flags
+        if flag_name in self.flags:
+            return self._evaluate_flag(self.flags[flag_name], context)
+            
+        return False
+        
+    def _evaluate_flag(self, flag_config, context):
+        # Simple version - just check is_active
+        if isinstance(flag_config, bool):
+            return flag_config
+            
+        # Advanced version with targeting rules
+        if isinstance(flag_config, dict):
+            if "is_active" in flag_config and not flag_config["is_active"]:
+                return False
+                
+            # Targeting logic (user percentage, environment, etc)
+            if context and "targeting" in flag_config:
+                return self._evaluate_targeting(flag_config["targeting"], context)
+                
+            return flag_config.get("is_active", False)
+            
+    def _evaluate_targeting(self, targeting, context):
+        # Percentage rollout
+        if "percentage" in targeting:
+            user_id = context.get("user_id", "")
+            if user_id:
+                # Deterministic hashing for consistent user experience
+                import hashlib
+                hash_val = int(hashlib.md5(f"{user_id}:{targeting.get('seed', 'default')}".encode()).hexdigest(), 16)
+                return (hash_val % 100) < targeting["percentage"]
+        
+        # Environment targeting
+        if "environments" in targeting and "environment" in context:
+            return context["environment"] in targeting["environments"]
+            
+        return True
+```
+
+### Experiment Database Schema
+```python
+# models/experiment.py
+from sqlalchemy import Column, String, Integer, Boolean, JSON, DateTime, Enum
+from sqlalchemy.sql import func
+from db.base_class import Base
+
+class Experiment(Base):
+    __tablename__ = "experiments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    description = Column(String, nullable=True)
+    feature_flag = Column(String, index=True)  # Associated feature flag
+    status = Column(Enum("draft", "running", "paused", "completed", "cancelled", name="experiment_status"), default="draft")
+    
+    # Experiment configuration
+    variants = Column(JSON)  # Contains control and treatment configurations
+    success_criteria = Column(JSON)  # Metrics and thresholds for success
+    
+    # Targeting
+    audience = Column(JSON, nullable=True)  # Who should be included
+    
+    # Timing
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Results
+    results = Column(JSON, nullable=True)  # Collected metrics and analysis
+    conclusion = Column(String, nullable=True)  # Final decision
+```
+
+### Experiment Service Implementation
+```python
+# services/experiment_service.py
+class ExperimentService:
+    def __init__(self, db, feature_flag_service, logger):
+        self.db = db
+        self.feature_flag_service = feature_flag_service
+        self.logger = logger
+        
+    async def start_experiment(self, experiment_id: int):
+        """Start an experiment by activating its feature flag"""
+        experiment = await self.get_experiment(experiment_id)
+        if not experiment or experiment.status != "draft":
+            raise ValueError(f"Cannot start experiment {experiment_id}: invalid state")
+            
+        # Update experiment status
+        experiment.status = "running"
+        experiment.start_date = datetime.now()
+        
+        # Activate feature flag with experiment configuration
+        flag_name = experiment.feature_flag
+        self.feature_flag_service.dynamic_flags[flag_name] = {
+            "is_active": True,
+            "targeting": experiment.audience,
+            "variants": experiment.variants
+        }
+        
+        self.logger.info(f"Started experiment {experiment.name} with flag {flag_name}")
+        await self.db.commit()
+        return experiment
+        
+    async def conclude_experiment(self, experiment_id: int, success: bool = None):
+        """Conclude an experiment and record results"""
+        experiment = await self.get_experiment(experiment_id)
+        if not experiment or experiment.status != "running":
+            raise ValueError(f"Cannot conclude experiment {experiment_id}: not running")
+            
+        # Fetch metrics and analyze results
+        metrics = await self._collect_experiment_metrics(experiment)
+        analysis = self._analyze_experiment_results(experiment, metrics)
+        
+        # Update experiment
+        experiment.status = "completed"
+        experiment.end_date = datetime.now()
+        experiment.results = analysis
+        
+        # Make decision based on success criteria if not manually specified
+        if success is None:
+            success = self._evaluate_success_criteria(experiment, analysis)
+        
+        experiment.conclusion = "success" if success else "failure"
+        
+        # Handle feature flag (keep enabled if successful, disable if failed)
+        if not success:
+            await self._rollback_experiment(experiment)
+        else:
+            # For successful experiments, we might want to make the feature permanent
+            # This would involve updating the base configuration
+            pass
+            
+        await self.db.commit()
+        return experiment
+        
+    async def _rollback_experiment(self, experiment):
+        """Rollback a failed experiment"""
+        # Disable the feature flag
+        flag_name = experiment.feature_flag
+        if flag_name in self.feature_flag_service.dynamic_flags:
+            del self.feature_flag_service.dynamic_flags[flag_name]
+            
+        self.logger.info(f"Rolled back experiment {experiment.name} by disabling flag {flag_name}")
+        
+        # Additional rollback actions could include:
+        # 1. Triggering a deployment to revert code changes
+        # 2. Restoring previous model versions
+        # 3. Notifying stakeholders
+```
+
+### Sandboxing Implementation
+```python
+# services/sandbox_service.py
+class SandboxService:
+    """Service for creating isolated environments for experiments"""
+    
+    def __init__(self, config):
+        self.config = config
+        
+    async def create_sandbox(self, experiment_id: str, variant: str):
+        """Create a sandboxed environment for an experiment variant"""
+        # For MVP, this could simply return configuration for a specific variant
+        # In a more advanced implementation, this might:
+        # 1. Spin up isolated containers/VMs
+        # 2. Deploy specific code versions
+        # 3. Configure isolated databases
+        
+        sandbox_id = f"sandbox-{experiment_id}-{variant}"
+        
+        # Return sandbox configuration
+        return {
+            "id": sandbox_id,
+            "experiment_id": experiment_id,
+            "variant": variant,
+            "created_at": datetime.now().isoformat(),
+            # Configuration details would be added here
+        }
+    
+    async def destroy_sandbox(self, sandbox_id: str):
+        """Clean up a sandbox when no longer needed"""
+        # Cleanup logic would go here
+        pass
+```
+
+### Metrics Collection Integration
+```python
+# services/metrics_service.py
+class ExperimentMetricsService:
+    """Service for collecting and analyzing experiment metrics"""
+    
+    def __init__(self, metrics_client, logger):
+        self.metrics_client = metrics_client  # e.g., Prometheus, custom metrics store
+        self.logger = logger
+        
+    async def collect_metrics(self, experiment, time_range=None):
+        """Collect metrics for an experiment"""
+        # Default to experiment duration if time range not specified
+        if not time_range and experiment.start_date:
+            start = experiment.start_date
+            end = experiment.end_date or datetime.now()
+            time_range = (start, end)
+            
+        metrics = {}
+        
+        # Collect metrics for each success criterion
+        for criterion in experiment.success_criteria:
+            metric_name = criterion["metric"]
+            try:
+                # Query metrics with experiment and variant labels
+                control_data = await self.metrics_client.query(
+                    metric_name,
+                    {"experiment": experiment.name, "variant": "control"},
+                    time_range
+                )
+                
+                treatment_data = await self.metrics_client.query(
+                    metric_name,
+                    {"experiment": experiment.name, "variant": "treatment"},
+                    time_range
+                )
+                
+                metrics[metric_name] = {
+                    "control": self._summarize_metric(control_data),
+                    "treatment": self._summarize_metric(treatment_data)
+                }
+            except Exception as e:
+                self.logger.error(f"Failed to collect metric {metric_name}: {str(e)}")
+                
+        return metrics
+        
+    def _summarize_metric(self, data):
+        """Summarize metric data with statistical measures"""
+        import numpy as np
+        
+        if not data:
+            return {"count": 0}
+            
+        values = [point["value"] for point in data]
+        return {
+            "count": len(values),
+            "mean": np.mean(values),
+            "median": np.median(values),
+            "p95": np.percentile(values, 95),
+            "min": np.min(values),
+            "max": np.max(values)
+        }
+        
+    def analyze_results(self, experiment, metrics):
+        """Analyze experiment results against success criteria"""
+        results = {}
+        
+        for criterion in experiment.success_criteria:
+            metric_name = criterion["metric"]
+            if metric_name not in metrics:
+                results[metric_name] = {"status": "missing_data"}
+                continue
+                
+            metric_data = metrics[metric_name]
+            
+            # Calculate improvement
+            control = metric_data["control"]["mean"]
+            treatment = metric_data["treatment"]["mean"]
+            
+            if control == 0:
+                relative_change = float('inf') if treatment > 0 else 0
+            else:
+                relative_change = (treatment - control) / control
+                
+            # Determine if criterion was met
+            threshold = criterion.get("threshold", 0)
+            direction = criterion.get("direction", "increase")
+            
+            if direction == "increase":
+                success = relative_change >= threshold
+            else:
+                success = relative_change <= threshold
+                
+            results[metric_name] = {
+                "control": control,
+                "treatment": treatment,
+                "relative_change": relative_change,
+                "threshold": threshold,
+                "direction": direction,
+                "success": success
+            }
+            
+        return results
+```
+</info added on 2025-05-01T14:35:12.580Z>
+
+<info added on 2025-05-02T18:46:59.534Z>
+## Implementation Plan for Experimentation Framework
+
+### Integration with Existing Services
+
+```python
+# services/experiment_service.py - Additional integration methods
+
+async def register_with_adaptation_manager(self, experiment_id: int):
+    """Register experiment with adaptation manager for monitoring"""
+    experiment = await self.get_experiment(experiment_id)
+    if not experiment:
+        raise ValueError(f"Experiment {experiment_id} not found")
+        
+    # Register experiment metrics as adaptation triggers
+    metrics = [criterion["metric"] for criterion in experiment.success_criteria]
+    await self.adaptation_manager.register_experiment_metrics(
+        experiment.id,
+        experiment.name,
+        metrics,
+        experiment.variants
+    )
+    
+    self.logger.info(f"Registered experiment {experiment.name} with adaptation manager")
+    return True
+
+async def get_experiment_decision(self, experiment_id: int):
+    """Get automated decision recommendation for experiment"""
+    experiment = await self.get_experiment(experiment_id)
+    if not experiment or experiment.status != "running":
+        raise ValueError(f"Cannot get decision for experiment {experiment_id}: not running")
+        
+    # Collect current metrics
+    metrics = await self._collect_experiment_metrics(experiment)
+    analysis = self._analyze_experiment_results(experiment, metrics)
+    
+    # Calculate confidence levels
+    confidence = self._calculate_statistical_confidence(experiment, metrics)
+    
+    # Get recommendation
+    if confidence >= self.config.MIN_CONFIDENCE_THRESHOLD:
+        # We have enough data to make a decision
+        success = self._evaluate_success_criteria(experiment, analysis)
+        recommendation = {
+            "action": "conclude",
+            "outcome": "success" if success else "failure",
+            "confidence": confidence,
+            "analysis": analysis
+        }
+    else:
+        # Need more data
+        recommendation = {
+            "action": "continue",
+            "confidence": confidence,
+            "analysis": analysis,
+            "estimated_completion_time": self._estimate_completion_time(experiment, metrics, confidence)
+        }
+        
+    return recommendation
+```
+
+### Feature Flag Client for Adaptation Components
+
+```python
+# clients/feature_flag_client.py
+class FeatureFlagClient:
+    """Client for components to check feature flags"""
+    
+    def __init__(self, feature_flag_service_url, auth_token=None):
+        self.base_url = feature_flag_service_url
+        self.headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+        self.cache = {}  # Simple cache to reduce API calls
+        self.cache_ttl = 30  # seconds
+        
+    async def is_flag_active(self, flag_name: str, context: dict = None) -> bool:
+        """Check if a feature flag is active"""
+        cache_key = f"{flag_name}:{json.dumps(context or {})}"
+        
+        # Check cache first
+        if cache_key in self.cache:
+            entry = self.cache[cache_key]
+            if time.time() - entry["timestamp"] < self.cache_ttl:
+                return entry["value"]
+        
+        # Make API call
+        async with aiohttp.ClientSession() as session:
+            url = f"{self.base_url}/api/v1/feature-flags/evaluate/{flag_name}"
+            async with session.post(url, json=context or {}, headers=self.headers) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    is_active = result.get("is_active", False)
+                    
+                    # Update cache
+                    self.cache[cache_key] = {
+                        "value": is_active,
+                        "timestamp": time.time()
+                    }
+                    
+                    return is_active
+                else:
+                    # Log error and default to False
+                    error_text = await response.text()
+                    logging.error(f"Error checking feature flag {flag_name}: {error_text}")
+                    return False
+```
+
+### Database Indexes and Performance Optimization
+
+```sql
+-- Add to the Alembic migration for experiment table
+-- Create indexes for common query patterns
+
+-- Index for finding active experiments
+CREATE INDEX ix_experiments_status ON experiments (status);
+
+-- Index for time-based queries
+CREATE INDEX ix_experiments_time_range ON experiments (start_date, end_date);
+
+-- Composite index for feature flag lookups
+CREATE INDEX ix_experiments_flag_status ON experiments (feature_flag, status);
+```
+
+### Experiment Configuration Schema
+
+```python
+# schemas/experiment.py - Additional schema definitions
+
+class ExperimentVariant(BaseModel):
+    name: str
+    description: Optional[str] = None
+    weight: float = 0.5  # Percentage of traffic (0.0-1.0)
+    parameters: Dict[str, Any] = {}
+
+class SuccessCriterion(BaseModel):
+    metric: str
+    direction: Literal["increase", "decrease"]
+    threshold: float
+    minimum_sample_size: Optional[int] = None
+
+class ExperimentAudience(BaseModel):
+    percentage: Optional[float] = None  # Overall percentage of traffic
+    user_segments: Optional[List[str]] = None  # User segment identifiers
+    environments: Optional[List[str]] = None  # Environment names
+
+class ExperimentCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    feature_flag: str
+    variants: List[ExperimentVariant]
+    success_criteria: List[SuccessCriterion]
+    audience: Optional[ExperimentAudience] = None
+    duration_days: Optional[int] = 14  # Default experiment duration
+```
+
+### Testing Framework for Experiments
+
+```python
+# tests/services/test_experiment_service.py
+import pytest
+from unittest.mock import AsyncMock, patch
+from datetime import datetime, timedelta
+
+@pytest.fixture
+def mock_feature_flag_service():
+    service = AsyncMock()
+    service.dynamic_flags = {}
+    return service
+
+@pytest.fixture
+def mock_metrics_service():
+    service = AsyncMock()
+    service.collect_metrics.return_value = {
+        "response_time": {
+            "control": {"mean": 100, "count": 1000},
+            "treatment": {"mean": 90, "count": 1000}
+        },
+        "error_rate": {
+            "control": {"mean": 0.05, "count": 1000},
+            "treatment": {"mean": 0.04, "count": 1000}
+        }
+    }
+    return service
+
+async def test_start_experiment(mock_db, mock_feature_flag_service, mock_metrics_service):
+    # Setup test experiment
+    experiment = Experiment(
+        id=1,
+        name="Test Experiment",
+        feature_flag="new_algorithm",
+        status="draft",
+        variants=[
+            {"name": "control", "weight": 0.5},
+            {"name": "treatment", "weight": 0.5}
+        ],
+        success_criteria=[
+            {"metric": "response_time", "direction": "decrease", "threshold": 0.05}
+        ]
+    )
+    
+    mock_db.get.return_value = experiment
+    
+    # Create service with mocks
+    service = ExperimentService(mock_db, mock_feature_flag_service, mock_metrics_service, logging.getLogger())
+    
+    # Test starting experiment
+    await service.start_experiment(1)
+    
+    # Assertions
+    assert experiment.status == "running"
+    assert experiment.start_date is not None
+    assert "new_algorithm" in mock_feature_flag_service.dynamic_flags
+    assert mock_feature_flag_service.dynamic_flags["new_algorithm"]["is_active"] is True
+    assert mock_db.commit.called
+```
+
+### Monitoring Dashboard Configuration
+
+```yaml
+# dashboards/experiment_dashboard.yaml
+apiVersion: 1
+kind: Dashboard
+metadata:
+  name: experiment-monitoring
+  folder: F-Operator
+spec:
+  title: Experiment Monitoring
+  uid: experiment-monitoring
+  tags: [f-operator, experiments]
+  time:
+    from: now-7d
+    to: now
+  panels:
+    - title: Active Experiments
+      type: table
+      gridPos: {x: 0, y: 0, w: 24, h: 8}
+      datasource: prometheus
+      targets:
+        - expr: 'count(f_operator_experiment_active) by (experiment_name, feature_flag)'
+      fieldConfig:
+        defaults:
+          mappings: []
+        overrides: []
+      options:
+        showHeader: true
+        
+    - title: Experiment Metrics
+      type: timeseries
+      gridPos: {x: 0, y: 8, w: 24, h: 12}
+      datasource: prometheus
+      targets:
+        - expr: 'f_operator_experiment_metric{experiment_name="$experiment", variant="control"}'
+          legendFormat: '{{metric}} (control)'
+        - expr: 'f_operator_experiment_metric{experiment_name="$experiment", variant="treatment"}'
+          legendFormat: '{{metric}} (treatment)'
+      fieldConfig:
+        defaults:
+          unit: none
+          color: {mode: palette-classic}
+        overrides: []
+      options:
+        legend: {showLegend: true}
+        tooltip: {mode: single, sort: none}
+```
+</info added on 2025-05-02T18:46:59.534Z>
+
+## 5. Implement Agent Recombination and Composition Interfaces [done]
+### Dependencies: 6.1, 6.3
+### Description: Develop interfaces and mechanisms for combining and composing agents
+### Details:
+Create interfaces for agent recombination operations that allow combining capabilities from multiple agents. Implement composition patterns for different entity types (service composition for microservices, model ensemble techniques for AI models). Develop mechanisms to resolve conflicts during composition. Implement validation logic to ensure composed entities maintain functional integrity. Create appropriate metadata to track the lineage of composed entities. Design interfaces that support both automated and guided composition operations. Ensure the composition process maintains proper versioning and can be rolled back if necessary.
+
+<info added on 2025-05-01T15:02:03.613Z>
+# Integration Implementation Details
+
+## Registry Integration
+
+```python
+class AgentRegistryClient:
+    def __init__(self, base_url: str, auth_token: str = None):
+        self.base_url = base_url
+        self.headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+        self.client = httpx.AsyncClient(base_url=base_url, headers=self.headers)
+    
+    async def get_agent(self, agent_id: str) -> Dict:
+        response = await self.client.get(f"/agents/{agent_id}")
+        response.raise_for_status()
+        return response.json()
+    
+    async def update_agent_composition(self, agent_id: str, composition_metadata: Dict) -> Dict:
+        response = await self.client.patch(f"/agents/{agent_id}/composition", json=composition_metadata)
+        response.raise_for_status()
+        return response.json()
+```
+
+## Composition Workflow
+
+1. Implement a composition resolver that handles different composition strategies:
+   - Capability-based composition (combining agents based on their capabilities)
+   - Sequential composition (chaining agents in a workflow)
+   - Parallel composition (running agents concurrently and aggregating results)
+
+```python
+class CompositionResolver:
+    def resolve_conflicts(self, agents: List[Agent], strategy: str = "priority_based") -> Dict:
+        """
+        Resolve conflicts between agents during composition
+        
+        Strategies:
+        - priority_based: Use agent with higher priority when capabilities overlap
+        - merge: Attempt to merge overlapping capabilities
+        - consensus: Use voting mechanism for overlapping capabilities
+        """
+        # Implementation details
+```
+
+## Lineage Tracking
+
+Implement a composition graph structure to track agent lineage:
+
+```python
+@dataclass
+class CompositionNode:
+    agent_id: str
+    parent_ids: List[str]
+    composition_type: str  # "recombination", "mutation", "ensemble", etc.
+    timestamp: datetime
+    parameters: Dict
+    
+    def to_dict(self) -> Dict:
+        return asdict(self)
+```
+
+## Rollback Support
+
+```python
+class CompositionVersionManager:
+    def __init__(self, registry_client: AgentRegistryClient):
+        self.registry_client = registry_client
+        
+    async def save_checkpoint(self, agent_id: str, composition_state: Dict) -> str:
+        """Save a composition checkpoint that can be restored later"""
+        # Implementation
+        
+    async def rollback(self, agent_id: str, checkpoint_id: str) -> None:
+        """Rollback an agent to a previous composition state"""
+        # Implementation
+```
+
+## Policy Engine Integration
+
+```python
+async def validate_composition_with_policy(
+    policy_engine_client, 
+    source_agents: List[str], 
+    composition_type: str,
+    parameters: Dict
+) -> bool:
+    """
+    Validate a proposed composition against policy rules
+    Returns True if composition is allowed, False otherwise
+    """
+    validation_request = {
+        "operation": "agent_composition",
+        "source_agents": source_agents,
+        "composition_type": composition_type,
+        "parameters": parameters
+    }
+    
+    response = await policy_engine_client.validate_operation(validation_request)
+    return response.get("allowed", False)
+```
+</info added on 2025-05-01T15:02:03.613Z>
+
+## 6. Implement Provenance Tracking and Controls for STABLE Entities [done]
+### Dependencies: 6.1, 6.2, 6.3, 6.4, 6.5
+### Description: Develop comprehensive provenance tracking and implement controls for operations on STABLE entities
+### Details:
+Implement a provenance tracking system that records all adaptation operations, their parameters, and outcomes. Create a data model for storing the complete lineage of entities including all adaptations, experiments, and compositions. Develop special controls and approval workflows for operations on entities marked as STABLE. Implement authorization mechanisms to enforce these controls. Create audit logging for all operations with appropriate detail for compliance and debugging. Develop interfaces for querying provenance information. Implement visualization capabilities for entity lineage. Ensure the provenance system integrates with all adaptation mechanisms implemented in previous subtasks.
+
+<info added on 2025-05-01T15:15:03.607Z>
+# Implementation Plan for Subtask 6.6
+
+## Technical Implementation Details
+
+### Provenance Data Model Schema
+```sql
+CREATE TABLE provenance_records (
+    id UUID PRIMARY KEY,
+    entity_id UUID NOT NULL REFERENCES entities(id),
+    operation_type VARCHAR(50) NOT NULL, -- e.g., 'adaptation', 'composition', 'experiment'
+    operation_id UUID NOT NULL, -- reference to specific operation record
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    parent_entity_id UUID REFERENCES entities(id), -- for tracking lineage
+    parameters JSONB NOT NULL, -- operation-specific parameters
+    outcome_status VARCHAR(20) NOT NULL, -- 'success', 'failure', 'pending'
+    outcome_details JSONB,
+    approval_status VARCHAR(20), -- 'approved', 'rejected', 'pending', NULL for non-STABLE
+    approver_id UUID REFERENCES users(id),
+    approval_timestamp TIMESTAMP WITH TIME ZONE,
+    approval_notes TEXT
+);
+
+CREATE INDEX idx_provenance_entity ON provenance_records(entity_id);
+CREATE INDEX idx_provenance_operation ON provenance_records(operation_type, operation_id);
+CREATE INDEX idx_provenance_timestamp ON provenance_records(timestamp);
+```
+
+### STABLE Entity Control Implementation
+```python
+def perform_operation_on_entity(entity_id, operation_type, parameters, user_id):
+    entity = get_entity(entity_id)
+    
+    # Check if entity is marked as STABLE
+    if entity.stability_status == "STABLE":
+        # Create approval request
+        approval_request = create_approval_request(
+            entity_id=entity_id,
+            operation_type=operation_type,
+            parameters=parameters,
+            requester_id=user_id
+        )
+        
+        # Check if auto-approval is possible based on policy
+        if can_auto_approve(entity, operation_type, parameters, user_id):
+            approve_request(approval_request.id, auto_approved=True)
+            return execute_operation(entity_id, operation_type, parameters, user_id)
+        else:
+            # Return pending status
+            return {"status": "pending_approval", "request_id": approval_request.id}
+    else:
+        # Non-STABLE entities can proceed directly
+        return execute_operation(entity_id, operation_type, parameters, user_id)
+```
+
+### Lineage Graph Query API
+```python
+@app.get("/api/provenance/lineage/{entity_id}")
+def get_entity_lineage(entity_id: UUID, depth: int = 5):
+    """
+    Returns the complete lineage graph for an entity up to specified depth.
+    
+    The returned data structure is optimized for visualization with libraries 
+    like D3.js or Cytoscape.js.
+    """
+    nodes = []
+    edges = []
+    
+    # Start with the requested entity
+    entity_queue = [(get_entity(entity_id), 0)]
+    processed_entities = set()
+    
+    while entity_queue:
+        current_entity, current_depth = entity_queue.pop(0)
+        
+        if current_entity.id in processed_entities or current_depth > depth:
+            continue
+            
+        processed_entities.add(current_entity.id)
+        
+        # Add node for current entity
+        nodes.append({
+            "id": str(current_entity.id),
+            "label": current_entity.name,
+            "type": current_entity.type,
+            "stability": current_entity.stability_status
+        })
+        
+        # Get parent entities from provenance records
+        parent_records = get_provenance_records(
+            entity_id=current_entity.id, 
+            include_parents=True
+        )
+        
+        for record in parent_records:
+            if record.parent_entity_id:
+                # Add edge from parent to current
+                edges.append({
+                    "source": str(record.parent_entity_id),
+                    "target": str(current_entity.id),
+                    "operation": record.operation_type,
+                    "timestamp": record.timestamp.isoformat()
+                })
+                
+                # Add parent to queue for processing
+                parent_entity = get_entity(record.parent_entity_id)
+                entity_queue.append((parent_entity, current_depth + 1))
+    
+    return {"nodes": nodes, "edges": edges}
+```
+
+### Approval Workflow for STABLE Entities
+Implement a multi-party approval system with configurable rules:
+
+1. Define approval policies in a configuration file:
+```yaml
+approval_policies:
+  - entity_type: "model"
+    stability: "STABLE"
+    operations: ["adaptation", "composition"]
+    required_approvers: 2
+    required_roles: ["senior_engineer", "team_lead"]
+    auto_approve_conditions:
+      - operation: "experiment"
+        parameters:
+          non_destructive: true
+```
+
+2. Implement notification system for pending approvals via email, Slack, or dashboard alerts
+
+3. Create approval dashboard UI component showing pending requests with diff views of proposed changes
+</info added on 2025-05-01T15:15:03.607Z>
+

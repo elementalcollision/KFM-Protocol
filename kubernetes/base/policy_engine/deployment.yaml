@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-engine-deployment
+  namespace: kfm-system # Using a separate namespace for core system components?
+  labels:
+    app: policy-engine
+spec:
+  replicas: 1 # Start with 1, can scale later
+  selector:
+    matchLabels:
+      app: policy-engine
+  template:
+    metadata:
+      labels:
+        app: policy-engine
+      # Add annotations for Prometheus scraping
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8000' 
+    spec:
+      containers:
+        - name: policy-engine
+          # Replace with your actual image name/registry path
+          image: your-registry/kfm-policy-engine:latest 
+          ports:
+            - containerPort: 8000 # Port the application listens on
+              name: http
+          # Liveness and readiness probes
+          livenessProbe:
+            httpGet:
+              path: /health # Assuming a /health endpoint exists
+              port: 8000
+            initialDelaySeconds: 20 
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # Define resource requests and limits
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m" 
+            limits:
+              memory: "256Mi"
+              cpu: "250m" 
+          # Environment variables from ConfigMaps or Secrets
+          # May need access to the config management system (e.g., Consul address)
+          envFrom:
+            - configMapRef:
+                name: policy-engine-config
+            # - secretRef:
+            #     name: policy-engine-secrets 

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resource-manager-deployment
+  namespace: kfm-system # Using the same namespace as policy-engine?
+  labels:
+    app: resource-manager
+spec:
+  replicas: 1 # Start with 1, can scale later
+  selector:
+    matchLabels:
+      app: resource-manager
+  template:
+    metadata:
+      labels:
+        app: resource-manager
+      # Add annotations for Prometheus scraping
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8000' 
+    spec:
+      # Service Account needed for K8s API access
+      serviceAccountName: resource-manager-sa # Needs to be created separately with RBAC
+      containers:
+        - name: resource-manager
+          # Replace with your actual image name/registry path
+          image: your-registry/kfm-resource-manager:latest 
+          ports:
+            - containerPort: 8000 # Port the application listens on
+              name: http
+          # Liveness and readiness probes
+          livenessProbe:
+            httpGet:
+              path: /health # Assuming a /health endpoint exists
+              port: 8000
+            initialDelaySeconds: 20 
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # Define resource requests and limits
+          resources:
+            requests:
+              memory: "256Mi" 
+              cpu: "200m" 
+            limits:
+              memory: "512Mi"
+              cpu: "500m" 
+          # Environment variables from ConfigMaps or Secrets
+          # Needs access to K8s API (via ServiceAccount) and potentially RabbitMQ, Quota Config
+          envFrom:
+            - configMapRef:
+                name: resource-manager-config # General config, quota config source, RabbitMQ URL
+            - secretRef:
+                name: resource-manager-secrets # E.g., RabbitMQ credentials
+          # Volume mount for quota config if not using ConfigMap/env var for it
+          # volumeMounts:
+          # - name: quota-config-volume
+          #   mountPath: /code/resource_manager_service/config
+          #   readOnly: true
+      # volumes:
+      #   - name: quota-config-volume
+      #     configMap:
+      #       name: resource-manager-quota-config # Assumes quota config is in a separate CM
+      #       items:
+      #         - key: resource_quotas.yaml
+      #           path: resource_quotas.yaml 

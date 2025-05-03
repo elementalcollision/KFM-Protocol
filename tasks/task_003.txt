@@ -1,0 +1,1174 @@
+# Task ID: 3
+# Title: Design and Implement Lifecycle State Machine
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Create a state machine that enforces valid transitions between the defined lifecycle states (NEW, EXPERIMENTAL, CANDIDATE, STABLE, DEPRECATED, ARCHIVED, KILLED).
+# Details:
+Implement a state machine that enforces the lifecycle states defined in section 3.3. Define allowed transitions between states (e.g., NEW → EXPERIMENTAL, EXPERIMENTAL → CANDIDATE, etc.). Ensure transitions are atomic operations. Implement validation logic to prevent invalid state transitions. Create a service that exposes an API for state transitions (PUT /agents/{id}/state) that requires justification and validates against transition rules. Log all state transitions with required metadata (timestamp, triggering entity, justification). Implement notification hooks that can be triggered on specific state changes.
+
+# Test Strategy:
+Create unit tests for each valid and invalid state transition. Test atomicity under concurrent operations. Verify logging of all transitions. Test notification triggers for state changes. Create a visual representation of the state machine for documentation.
+
+# Subtasks:
+## 1. Define State Machine Model and Transition Rules [done]
+### Dependencies: None
+### Description: Create the core state machine model that defines all lifecycle states and their valid transitions
+### Details:
+Design a state diagram that clearly maps all possible transitions between the seven lifecycle states (NEW, EXPERIMENTAL, CANDIDATE, STABLE, DEPRECATED, ARCHIVED, KILLED). Define a data structure to represent states and transitions, including any conditions required for each transition. Document which transitions are allowed and which are forbidden (e.g., NEW → EXPERIMENTAL is allowed, but NEW → STABLE might be forbidden). Include metadata requirements for each transition such as required justification fields. This model will serve as the foundation for all implementation work.
+
+<info added on 2025-05-01T10:37:25.227Z>
+Here's the additional information to enhance the subtask:
+
+```
+## Implementation Details
+
+### State Machine Visualization
+Use Mermaid syntax to create a clear directional graph in the documentation:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW
+    NEW --> EXPERIMENTAL
+    EXPERIMENTAL --> CANDIDATE
+    CANDIDATE --> STABLE
+    STABLE --> DEPRECATED
+    DEPRECATED --> ARCHIVED
+    EXPERIMENTAL --> KILLED
+    CANDIDATE --> KILLED
+    DEPRECATED --> KILLED
+```
+
+### Data Structure Implementation
+Implement the state machine using Python Enums and TypedDict:
+
+```python
+from enum import Enum, auto
+from typing import TypedDict, List, Optional
+from datetime import datetime
+
+class AgentState(Enum):
+    NEW = auto()
+    EXPERIMENTAL = auto()
+    CANDIDATE = auto()
+    STABLE = auto()
+    DEPRECATED = auto()
+    ARCHIVED = auto()
+    KILLED = auto()
+
+class TransitionMetadata(TypedDict):
+    required_fields: List[str]
+    optional_fields: List[str]
+    requires_approval: bool
+    approver_roles: List[str]
+
+class StateTransition(TypedDict):
+    from_state: AgentState
+    to_state: AgentState
+    metadata: TransitionMetadata
+    allowed: bool
+```
+
+### Transition Rules Matrix
+Create a comprehensive transition matrix in the documentation showing all possible state combinations with clear indicators for allowed/forbidden transitions and required metadata for each valid transition.
+
+### Validation Logic
+Implement validation functions to enforce transition rules:
+
+```python
+def validate_transition(from_state: AgentState, to_state: AgentState, metadata: dict) -> bool:
+    """
+    Validates if a transition from one state to another is allowed and if
+    the provided metadata meets requirements.
+    
+    Returns True if valid, raises ValidationError with details otherwise.
+    """
+```
+
+### Documentation Structure
+The `state_machine.md` file should include:
+1. Overview and purpose
+2. Visual representation (Mermaid diagram)
+3. Transition rules table
+4. Metadata requirements per transition
+5. Implementation examples
+6. Validation process
+</info added on 2025-05-01T10:37:25.227Z>
+
+<info added on 2025-05-01T10:38:01.118Z>
+<info added on 2025-05-02T14:22:18.123Z>
+## Implementation Recommendations
+
+### State Transition Validation System
+
+Implement a rule-based validation system with these components:
+
+```python
+class TransitionRule:
+    def __init__(self, condition_fn, error_message):
+        self.condition_fn = condition_fn
+        self.error_message = error_message
+    
+    def validate(self, transition_context):
+        return self.condition_fn(transition_context) or self.error_message
+
+# Example rules
+rules = {
+    (AgentState.NEW, AgentState.EXPERIMENTAL): [
+        TransitionRule(
+            lambda ctx: ctx.get('test_coverage', 0) >= 60,
+            "Requires minimum 60% test coverage to move to EXPERIMENTAL"
+        ),
+        TransitionRule(
+            lambda ctx: ctx.get('documentation') is not None,
+            "Basic documentation required for EXPERIMENTAL state"
+        )
+    ],
+    # Additional rules for other transitions
+}
+```
+
+### Event Sourcing Pattern
+
+Consider implementing an event sourcing pattern to track the complete history of state transitions:
+
+```python
+class StateTransitionEvent:
+    def __init__(self, agent_id, from_state, to_state, 
+                 timestamp, user_id, reason, metadata):
+        self.agent_id = agent_id
+        self.from_state = from_state
+        self.to_state = to_state
+        self.timestamp = timestamp
+        self.user_id = user_id
+        self.reason = reason
+        self.metadata = metadata
+```
+
+### State-Specific Behavior Hooks
+
+Design the system to allow custom behavior to be triggered on state transitions:
+
+```python
+state_entry_hooks = {
+    AgentState.DEPRECATED: [
+        notify_dependent_services,
+        update_documentation_status,
+        schedule_removal_reminder
+    ],
+    AgentState.STABLE: [
+        add_to_recommended_agents,
+        notify_product_teams
+    ]
+}
+```
+
+### Transition Approval Workflow
+
+Implement a multi-step approval workflow for critical transitions:
+
+```python
+class ApprovalWorkflow:
+    def __init__(self, transition, required_approvers):
+        self.transition = transition
+        self.required_approvers = required_approvers
+        self.approvals = {}
+        self.status = "PENDING"
+    
+    def add_approval(self, approver_id, approver_role, comments=None):
+        # Add approval logic
+        pass
+    
+    def is_approved(self):
+        # Check if all required approvals are received
+        pass
+```
+
+### Database Schema
+
+Create a database schema that efficiently represents the state machine:
+
+```sql
+CREATE TABLE agent_state_transitions (
+    id SERIAL PRIMARY KEY,
+    agent_id UUID NOT NULL,
+    from_state VARCHAR(20) NOT NULL,
+    to_state VARCHAR(20) NOT NULL,
+    transition_time TIMESTAMP NOT NULL,
+    requested_by UUID NOT NULL,
+    approved_by UUID,
+    approval_time TIMESTAMP,
+    reason TEXT NOT NULL,
+    metadata JSONB
+);
+```
+</info added on 2025-05-02T14:22:18.123Z>
+</info added on 2025-05-01T10:38:01.118Z>
+
+## 2. Implement Core State Machine Logic [done]
+### Dependencies: 3.1
+### Description: Develop the core state machine implementation that enforces transition rules
+### Details:
+Create a StateMachine class that implements the model defined in subtask 1. This class should provide methods to check if a transition is valid, execute transitions, and maintain the current state. Implement validation logic to prevent invalid state transitions based on the rules defined in the model. Ensure all transitions are atomic operations by using appropriate transaction mechanisms or locks. Include error handling for invalid transition attempts. The implementation should be independent of the API layer to maintain separation of concerns.
+
+<info added on 2025-05-01T10:38:22.576Z>
+Here's additional implementation information for the state machine logic:
+
+```python
+# Implementation notes for core/state_machine.py
+
+from enum import Enum
+from typing import Dict, List, Optional
+import logging
+from datetime import datetime
+
+from .exceptions import InvalidTransitionError
+
+logger = logging.getLogger(__name__)
+
+class AgentState(Enum):
+    IDLE = "idle"
+    PLANNING = "planning"
+    EXECUTING = "executing"
+    WAITING = "waiting"
+    ERROR = "error"
+
+# Define transition matrix with required justification fields
+ALLOWED_TRANSITIONS = {
+    AgentState.IDLE: {
+        AgentState.PLANNING: ["goal", "priority"],
+        AgentState.ERROR: ["error_message"]
+    },
+    AgentState.PLANNING: {
+        AgentState.EXECUTING: ["plan_id", "first_step"],
+        AgentState.IDLE: ["reason"],
+        AgentState.ERROR: ["error_message"]
+    },
+    # Complete other transitions...
+}
+
+class StateMachine:
+    def __init__(self, initial_state: AgentState = AgentState.IDLE):
+        self._current_state = initial_state
+        self._state_history = [(initial_state, None, datetime.now())]
+        self._transition_hooks = []
+    
+    def register_transition_hook(self, hook_function):
+        """Register a callback function to be called on every transition"""
+        self._transition_hooks.append(hook_function)
+    
+    def validate_transition(self, to_state: AgentState, justification: Dict) -> bool:
+        """Validate if transition is allowed and justification contains required fields"""
+        if to_state not in ALLOWED_TRANSITIONS.get(self._current_state, {}):
+            return False
+            
+        required_fields = ALLOWED_TRANSITIONS[self._current_state][to_state]
+        return all(field in justification for field in required_fields)
+        
+    # Implement atomic transition with context manager
+    def __enter__(self):
+        # Acquire lock or start transaction
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Release lock or commit/rollback transaction
+        pass
+```
+
+For `exceptions.py`:
+```python
+class InvalidTransitionError(Exception):
+    """Raised when an invalid state transition is attempted"""
+    def __init__(self, from_state, to_state, missing_fields=None):
+        self.from_state = from_state
+        self.to_state = to_state
+        self.missing_fields = missing_fields or []
+        message = f"Invalid transition from {from_state} to {to_state}"
+        if missing_fields:
+            message += f". Missing required fields: {', '.join(missing_fields)}"
+        super().__init__(message)
+```
+
+Testing considerations:
+- Use parameterized tests to verify all valid transitions
+- Test transition history tracking
+- Verify hooks are called correctly
+- Test concurrency safety with multiple threads attempting transitions
+</info added on 2025-05-01T10:38:22.576Z>
+
+<info added on 2025-05-01T10:45:21.672Z>
+<info added on 2025-05-02T14:15:23.891Z>
+Here's the implementation plan for the agent registry state machine:
+
+```python
+# Implementation for agent_registry_service/core/state_machine.py
+
+from enum import Enum
+from typing import Dict, List, Optional, Set, Tuple
+import logging
+from datetime import datetime
+import threading
+
+logger = logging.getLogger(__name__)
+
+class AgentState(Enum):
+    NEW = "new"
+    EXPERIMENTAL = "experimental"
+    CANDIDATE = "candidate"
+    STABLE = "stable"
+    DEPRECATED = "deprecated"
+    ARCHIVED = "archived"
+    KILLED = "killed"
+
+# Define transition matrix with required fields and validation rules
+ALLOWED_TRANSITIONS = {
+    AgentState.NEW: {
+        AgentState.EXPERIMENTAL: {
+            "required_fields": ["version", "owner", "test_results"],
+            "validators": ["has_passing_tests", "has_documentation"]
+        }
+    },
+    AgentState.EXPERIMENTAL: {
+        AgentState.CANDIDATE: {
+            "required_fields": ["performance_metrics", "stability_report"],
+            "validators": ["meets_performance_threshold", "has_sufficient_test_coverage"]
+        },
+        AgentState.KILLED: {
+            "required_fields": ["reason", "approved_by"],
+            "validators": ["has_approval_from_owner"]
+        }
+    },
+    AgentState.CANDIDATE: {
+        AgentState.STABLE: {
+            "required_fields": ["approval_votes", "security_review", "compliance_check"],
+            "validators": ["has_minimum_approval_votes", "passes_security_review"]
+        },
+        AgentState.EXPERIMENTAL: {
+            "required_fields": ["reason", "issues_found"],
+            "validators": []
+        },
+        AgentState.KILLED: {
+            "required_fields": ["reason", "approved_by"],
+            "validators": ["has_approval_from_owner"]
+        }
+    },
+    AgentState.STABLE: {
+        AgentState.DEPRECATED: {
+            "required_fields": ["reason", "replacement_agent", "timeline"],
+            "validators": ["has_valid_replacement"]
+        }
+    },
+    AgentState.DEPRECATED: {
+        AgentState.ARCHIVED: {
+            "required_fields": ["usage_statistics", "migration_report"],
+            "validators": ["usage_below_threshold"]
+        }
+    },
+    AgentState.ARCHIVED: {
+        AgentState.KILLED: {
+            "required_fields": ["reason", "data_retention_plan"],
+            "validators": ["has_data_migration_plan"]
+        }
+    }
+    # Note: KILLED is a terminal state with no outgoing transitions
+}
+
+class TransitionValidationError(Exception):
+    """Raised when transition validation fails"""
+    def __init__(self, from_state, to_state, reason, missing_fields=None, validation_errors=None):
+        self.from_state = from_state
+        self.to_state = to_state
+        self.reason = reason
+        self.missing_fields = missing_fields or []
+        self.validation_errors = validation_errors or []
+        
+        message = f"Cannot transition from {from_state.value} to {to_state.value}: {reason}"
+        super().__init__(message)
+
+class StateMachine:
+    def __init__(self, initial_state: AgentState = AgentState.NEW):
+        self._current_state = initial_state
+        self._state_history = [(initial_state, {}, datetime.now())]
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
+        self._validators = {
+            "has_passing_tests": self._validate_passing_tests,
+            "has_documentation": self._validate_documentation,
+            "meets_performance_threshold": self._validate_performance,
+            "has_sufficient_test_coverage": self._validate_test_coverage,
+            "has_approval_from_owner": self._validate_owner_approval,
+            "has_minimum_approval_votes": self._validate_approval_votes,
+            "passes_security_review": self._validate_security_review,
+            "has_valid_replacement": self._validate_replacement,
+            "usage_below_threshold": self._validate_usage_threshold,
+            "has_data_migration_plan": self._validate_data_migration
+        }
+    
+    @property
+    def current_state(self) -> AgentState:
+        """Get the current state of the agent"""
+        return self._current_state
+    
+    @property
+    def state_history(self) -> List[Tuple[AgentState, Dict, datetime]]:
+        """Get the history of state transitions"""
+        return self._state_history.copy()
+    
+    def can_transition_to(self, to_state: AgentState) -> bool:
+        """Check if transition to the given state is allowed from current state"""
+        return to_state in ALLOWED_TRANSITIONS.get(self._current_state, {})
+    
+    def validate_transition(self, to_state: AgentState, context: Dict) -> Tuple[bool, Optional[TransitionValidationError]]:
+        """Validate if transition is allowed and context contains required fields"""
+        # Check if transition is allowed
+        if not self.can_transition_to(to_state):
+            return False, TransitionValidationError(
+                self._current_state, 
+                to_state, 
+                "Transition not allowed"
+            )
+        
+        transition_rules = ALLOWED_TRANSITIONS[self._current_state][to_state]
+        
+        # Check required fields
+        required_fields = transition_rules["required_fields"]
+        missing_fields = [field for field in required_fields if field not in context]
+        if missing_fields:
+            return False, TransitionValidationError(
+                self._current_state,
+                to_state,
+                "Missing required fields",
+                missing_fields=missing_fields
+            )
+        
+        # Run validators
+        validation_errors = []
+        for validator_name in transition_rules["validators"]:
+            validator_func = self._validators.get(validator_name)
+            if validator_func and not validator_func(context):
+                validation_errors.append(validator_name)
+        
+        if validation_errors:
+            return False, TransitionValidationError(
+                self._current_state,
+                to_state,
+                "Failed validation checks",
+                validation_errors=validation_errors
+            )
+        
+        return True, None
+    
+    def transition(self, to_state: AgentState, context: Dict) -> bool:
+        """
+        Attempt to transition to the given state with the provided context
+        Returns True if transition was successful, False otherwise
+        """
+        with self._lock:
+            is_valid, error = self.validate_transition(to_state, context)
+            if not is_valid:
+                logger.warning(f"Invalid transition attempted: {error}")
+                return False
+            
+            # Perform the transition
+            self._current_state = to_state
+            self._state_history.append((to_state, context.copy(), datetime.now()))
+            logger.info(f"Transitioned to {to_state.value} state")
+            return True
+    
+    # Validator implementations
+    def _validate_passing_tests(self, context: Dict) -> bool:
+        test_results = context.get("test_results", {})
+        return test_results.get("passing", 0) > 0 and test_results.get("failing", 0) == 0
+    
+    def _validate_documentation(self, context: Dict) -> bool:
+        return bool(context.get("documentation_url"))
+    
+    def _validate_performance(self, context: Dict) -> bool:
+        metrics = context.get("performance_metrics", {})
+        return metrics.get("latency_ms", float('inf')) < 500 and metrics.get("success_rate", 0) > 0.95
+    
+    def _validate_test_coverage(self, context: Dict) -> bool:
+        return context.get("stability_report", {}).get("test_coverage", 0) > 80
+    
+    def _validate_owner_approval(self, context: Dict) -> bool:
+        return context.get("approved_by") == context.get("owner")
+    
+    def _validate_approval_votes(self, context: Dict) -> bool:
+        return len(context.get("approval_votes", [])) >= 3
+    
+    def _validate_security_review(self, context: Dict) -> bool:
+        return context.get("security_review", {}).get("passed", False)
+    
+    def _validate_replacement(self, context: Dict) -> bool:
+        return bool(context.get("replacement_agent"))
+    
+    def _validate_usage_threshold(self, context: Dict) -> bool:
+        return context.get("usage_statistics", {}).get("active_users", float('inf')) < 10
+    
+    def _validate_data_migration(self, context: Dict) -> bool:
+        return bool(context.get("data_retention_plan"))
+```
+
+Key implementation details:
+
+1. **Thread Safety**: Using a reentrant lock to ensure atomic transitions in multi-threaded environments.
+
+2. **Validation Framework**: Implemented a flexible validation system with:
+   - Required field checking
+   - Custom validator functions for business logic rules
+   - Detailed error reporting
+
+3. **History Tracking**: Each transition stores the state, context data, and timestamp.
+
+4. **Transition Rules**: Comprehensive transition matrix defines allowed state changes and validation requirements.
+
+5. **Error Handling**: Custom `TransitionValidationError` provides detailed information about why transitions fail.
+
+Testing approach:
+- Create parameterized tests for each valid transition path
+- Test invalid transitions and verify appropriate errors
+- Test concurrent transitions from multiple threads
+- Mock validator functions to test various validation scenarios
+</info added on 2025-05-02T14:15:23.891Z>
+</info added on 2025-05-01T10:45:21.672Z>
+
+## 3. Implement Transition Logging and Audit Trail [done]
+### Dependencies: 3.2
+### Description: Create a comprehensive logging system for all state transitions
+### Details:
+Extend the state machine implementation to log all transition events with required metadata including timestamp, triggering entity (user or system), justification provided, previous state, new state, and any additional context. Design the logging system to be persistent and queryable for audit purposes. Consider using an event sourcing pattern to maintain a complete history of all state changes. Implement methods to retrieve the transition history for a given agent. Ensure logging operations are part of the atomic transition process to maintain data integrity.
+
+<info added on 2025-05-01T10:48:34.044Z>
+Here's additional implementation information for the Transition Logging and Audit Trail:
+
+```python
+# Structure for transition log entries
+class TransitionLogEntry:
+    def __init__(self, previous_state, new_state, timestamp, actor_id, justification, context=None):
+        self.previous_state = previous_state
+        self.new_state = new_state
+        self.timestamp = timestamp
+        self.actor_id = actor_id  # User ID or system identifier
+        self.justification = justification
+        self.context = context or {}
+        self.entry_id = str(uuid.uuid4())  # Unique identifier for each log entry
+
+# Database schema considerations
+"""
+CREATE TABLE state_transitions (
+    entry_id UUID PRIMARY KEY,
+    agent_id UUID NOT NULL,
+    previous_state VARCHAR(50) NOT NULL,
+    new_state VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    actor_id VARCHAR(100) NOT NULL,
+    justification TEXT,
+    context JSONB,
+    FOREIGN KEY (agent_id) REFERENCES agents(id)
+);
+
+CREATE INDEX idx_state_transitions_agent_id ON state_transitions(agent_id);
+CREATE INDEX idx_state_transitions_timestamp ON state_transitions(timestamp);
+"""
+
+# Implementation for atomic transaction handling
+def transition_to(self, new_state, actor_id, justification, context=None):
+    """
+    Transition with atomic logging using database transaction
+    """
+    with db.transaction():  # Ensure atomicity
+        previous_state = self.current_state
+        # Validate transition
+        if new_state not in self.valid_transitions[previous_state]:
+            raise InvalidTransitionError(f"Cannot transition from {previous_state} to {new_state}")
+            
+        # Update state
+        self._current_state = new_state
+        
+        # Create log entry
+        log_entry = TransitionLogEntry(
+            previous_state=previous_state,
+            new_state=new_state,
+            timestamp=datetime.now(timezone.utc),
+            actor_id=actor_id,
+            justification=justification,
+            context=context
+        )
+        
+        # Persist log entry
+        db.execute(
+            "INSERT INTO state_transitions VALUES (:entry_id, :agent_id, :previous_state, :new_state, :timestamp, :actor_id, :justification, :context)",
+            {
+                "entry_id": log_entry.entry_id,
+                "agent_id": self.agent_id,
+                "previous_state": log_entry.previous_state,
+                "new_state": log_entry.new_state,
+                "timestamp": log_entry.timestamp,
+                "actor_id": log_entry.actor_id,
+                "justification": log_entry.justification,
+                "context": json.dumps(log_entry.context)
+            }
+        )
+        
+        return log_entry
+
+# Query methods for audit trail
+def get_transition_history(self, agent_id, filters=None):
+    """
+    Retrieve transition history with optional filtering
+    
+    filters: dict with optional keys:
+      - start_date: datetime
+      - end_date: datetime
+      - actor_id: str
+      - states: list[str]
+    """
+    query = "SELECT * FROM state_transitions WHERE agent_id = :agent_id"
+    params = {"agent_id": agent_id}
+    
+    if filters:
+        if filters.get("start_date"):
+            query += " AND timestamp >= :start_date"
+            params["start_date"] = filters["start_date"]
+        if filters.get("end_date"):
+            query += " AND timestamp <= :end_date"
+            params["end_date"] = filters["end_date"]
+        if filters.get("actor_id"):
+            query += " AND actor_id = :actor_id"
+            params["actor_id"] = filters["actor_id"]
+        if filters.get("states"):
+            states = filters["states"]
+            query += f" AND (previous_state IN ({','.join(['?']*len(states))}) OR new_state IN ({','.join(['?']*len(states))}))"
+            params.update({f"state_{i}": state for i, state in enumerate(states)})
+    
+    query += " ORDER BY timestamp DESC"
+    
+    return db.execute(query, params).fetchall()
+```
+</info added on 2025-05-01T10:48:34.044Z>
+
+## 4. Develop Notification Hook System [done]
+### Dependencies: 3.2
+### Description: Create a flexible notification system that triggers on state changes
+### Details:
+Design and implement a notification hook system that can be configured to trigger actions when specific state transitions occur. Create an observer pattern or event-driven architecture where listeners can subscribe to specific state change events. Implement both synchronous and asynchronous notification options. Include the ability to register custom handlers for different transition types (e.g., when an agent becomes DEPRECATED, notify dependent systems). Provide a mechanism to pass transition context and metadata to notification handlers.
+
+<info added on 2025-05-01T10:49:44.999Z>
+# Implementation Details for Notification Hook System
+
+## Core Implementation
+
+```python
+# In agent_registry_service/core/state_machine.py
+
+class StateMachine:
+    def __init__(self, initial_state, valid_transitions):
+        # Existing initialization code...
+        self._transition_hooks = []  # Store registered hook functions
+        
+    def register_transition_hook(self, hook_function):
+        """
+        Register a function to be called after state transitions.
+        
+        Args:
+            hook_function: Function that accepts (from_state, to_state, context)
+        
+        Returns:
+            hook_id: ID that can be used to unregister the hook
+        """
+        hook_id = len(self._transition_hooks)
+        self._transition_hooks.append(hook_function)
+        return hook_id
+        
+    def unregister_transition_hook(self, hook_id):
+        """Remove a previously registered hook by its ID"""
+        if 0 <= hook_id < len(self._transition_hooks):
+            self._transition_hooks[hook_id] = None
+            
+    def transition_to(self, new_state, context=None):
+        # Store the current state before transition
+        previous_state = self.current_state
+        
+        # Existing transition logic...
+        
+        # After successful transition, notify all hooks
+        transition_context = context or {}
+        for hook in self._transition_hooks:
+            if hook is not None:  # Skip unregistered hooks
+                try:
+                    hook(previous_state, new_state, transition_context)
+                except Exception as e:
+                    # Log error but don't interrupt the transition process
+                    logger.error(f"Error in transition hook: {str(e)}")
+```
+
+## Example Async Implementation
+
+```python
+# In agent_registry_service/core/async_hooks.py
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+class AsyncHookManager:
+    def __init__(self):
+        self.executor = ThreadPoolExecutor(max_workers=5)
+        self.loop = asyncio.get_event_loop()
+        
+    async def execute_hook_async(self, hook_func, from_state, to_state, context):
+        """Execute a hook function asynchronously"""
+        return await self.loop.run_in_executor(
+            self.executor, 
+            lambda: hook_func(from_state, to_state, context)
+        )
+        
+    def register_async_hook(self, state_machine):
+        """Register an async-aware hook with a state machine"""
+        def async_hook_wrapper(from_state, to_state, context):
+            # Schedule the async execution without waiting
+            asyncio.create_task(self.execute_hook_async(
+                self._process_notifications, from_state, to_state, context
+            ))
+        
+        return state_machine.register_transition_hook(async_hook_wrapper)
+        
+    async def _process_notifications(self, from_state, to_state, context):
+        # Implement notification logic here
+        pass
+```
+
+## Usage Example
+
+```python
+# Example usage in agent lifecycle management
+
+def setup_agent_lifecycle_hooks(agent_state_machine):
+    # Register a hook for deprecated state
+    def deprecated_notification_hook(from_state, to_state, context):
+        if to_state == "DEPRECATED":
+            agent_id = context.get("agent_id")
+            # Notify dependent systems
+            notify_dependent_systems(agent_id, "Agent has been deprecated")
+            
+    # Register a hook for all transitions
+    def audit_log_hook(from_state, to_state, context):
+        agent_id = context.get("agent_id")
+        user_id = context.get("user_id")
+        log_state_transition(agent_id, from_state, to_state, user_id)
+    
+    # Register hooks with state machine
+    agent_state_machine.register_transition_hook(deprecated_notification_hook)
+    agent_state_machine.register_transition_hook(audit_log_hook)
+```
+</info added on 2025-05-01T10:49:44.999Z>
+
+## 5. Create RESTful API for State Transitions [done]
+### Dependencies: 3.2, 3.3, 3.4
+### Description: Implement the API endpoint for triggering state transitions
+### Details:
+Develop the PUT /agents/{id}/state endpoint that allows clients to request state transitions. Implement request validation to ensure required fields (especially justification) are provided. Integrate with the core state machine to validate and execute transitions. Return appropriate HTTP status codes for successful transitions (200), invalid transitions (400), unauthorized transitions (403), or other errors. Document the API thoroughly, including expected request/response formats, authentication requirements, and example usage. Include appropriate rate limiting and security measures.
+
+<info added on 2025-05-01T10:52:45.002Z>
+# Implementation Details for RESTful API State Transitions
+
+## Route Handler Implementation
+
+```python
+@router.put("/{agent_id}/state", response_model=schemas.Agent)
+async def update_agent_state(
+    agent_id: UUID,
+    state_update: schemas.AgentStateUpdate,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: models.User = Depends(deps.get_current_active_user),
+) -> Any:
+    """
+    Update an agent's state.
+    
+    Requires:
+    - Valid agent_id
+    - Valid target state (must be a legal transition from current state)
+    - Justification for state change
+    - Appropriate permissions
+    """
+    # Check if agent exists
+    agent = await crud.agent.get(db=db, id=agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Check permissions
+    if not crud.agent.can_update_state(db, current_user, agent):
+        raise HTTPException(
+            status_code=403, 
+            detail="Not enough permissions to change this agent's state"
+        )
+    
+    # Validate state transition
+    try:
+        updated_agent = await crud.agent.update_state(
+            db=db,
+            db_obj=agent,
+            target_state=state_update.target_state,
+            justification=state_update.justification,
+            updated_by=current_user.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Log the state transition
+    await crud.agent_state_log.create(
+        db=db,
+        obj_in=schemas.AgentStateLogCreate(
+            agent_id=agent_id,
+            previous_state=agent.state,
+            new_state=updated_agent.state,
+            justification=state_update.justification,
+            changed_by=current_user.id
+        )
+    )
+    
+    return updated_agent
+```
+
+## Schema Definition
+
+```python
+# In schemas/agent.py
+class AgentStateUpdate(BaseModel):
+    target_state: AgentState
+    justification: str = Field(..., min_length=5, max_length=1000)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "target_state": "ACTIVE",
+                "justification": "Agent has completed all required training and security checks"
+            }
+        }
+```
+
+## Rate Limiting Configuration
+
+Add to middleware configuration:
+
+```python
+# In main.py or middleware.py
+app.add_middleware(
+    RateLimitMiddleware,
+    calls=20,
+    period=60,
+    paths=["/api/v1/agents/{agent_id}/state"]
+)
+```
+
+## API Documentation
+
+Add to OpenAPI documentation:
+
+```yaml
+paths:
+  /agents/{agent_id}/state:
+    put:
+      summary: Update agent state
+      description: Triggers a state transition for the specified agent
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentStateUpdate'
+      responses:
+        '200':
+          description: State updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          description: Invalid state transition
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Agent not found
+        '429':
+          description: Too many requests
+```
+</info added on 2025-05-01T10:52:45.002Z>
+
+## 6. Implement Integration Tests and Documentation [done]
+### Dependencies: 3.1, 3.2, 3.3, 3.4, 3.5
+### Description: Create comprehensive tests and documentation for the state machine system
+### Details:
+Develop integration tests that verify all aspects of the state machine implementation. Create test cases for each valid transition path and verify that invalid transitions are properly rejected. Test the logging system to ensure all required metadata is captured correctly. Verify that notification hooks trigger as expected for different state changes. Test the API endpoint with various valid and invalid requests. Create comprehensive documentation including the state transition diagram, API usage examples, and system architecture. Include information about how to extend the system with new states or transitions if needed in the future.
+
+<info added on 2025-05-01T10:55:45.351Z>
+Here's additional implementation information for your integration tests and documentation task:
+
+## Testing Framework Setup
+
+```python
+# agent_registry_service/tests/conftest.py
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from agent_registry_service.database import Base, get_db
+from agent_registry_service.main import app
+
+@pytest.fixture(scope="function")
+def test_db():
+    # In-memory SQLite for testing
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        Base.metadata.drop_all(bind=engine)
+
+@pytest.fixture(scope="function")
+def client(test_db):
+    def override_get_db():
+        try:
+            yield test_db
+        finally:
+            pass
+    
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as c:
+        yield c
+```
+
+## State Machine Unit Tests
+
+```python
+# agent_registry_service/tests/core/test_state_machine.py
+import pytest
+from datetime import datetime
+
+from agent_registry_service.core.state_machine import StateMachine, InvalidTransitionError
+
+class TestStateMachine:
+    def test_initial_state(self):
+        sm = StateMachine(initial_state="PENDING", allowed_transitions={
+            "PENDING": ["ACTIVE"],
+            "ACTIVE": ["INACTIVE", "TERMINATED"],
+            "INACTIVE": ["ACTIVE", "TERMINATED"],
+            "TERMINATED": []
+        })
+        assert sm.current_state == "PENDING"
+        assert sm.state_history[0]["state"] == "PENDING"
+        assert isinstance(sm.state_history[0]["timestamp"], datetime)
+        
+    def test_valid_transition(self):
+        sm = StateMachine(initial_state="PENDING", allowed_transitions={
+            "PENDING": ["ACTIVE"],
+            "ACTIVE": ["INACTIVE"]
+        })
+        
+        sm.transition("ACTIVE", metadata={"user_id": "test123"})
+        assert sm.current_state == "ACTIVE"
+        assert len(sm.state_history) == 2
+        assert sm.state_history[1]["state"] == "ACTIVE"
+        assert sm.state_history[1]["metadata"]["user_id"] == "test123"
+        
+    def test_invalid_transition(self):
+        sm = StateMachine(initial_state="PENDING", allowed_transitions={
+            "PENDING": ["ACTIVE"],
+            "ACTIVE": ["INACTIVE"]
+        })
+        
+        with pytest.raises(InvalidTransitionError) as excinfo:
+            sm.transition("INACTIVE")
+        assert "Cannot transition from PENDING to INACTIVE" in str(excinfo.value)
+        
+    def test_transition_hooks(self):
+        hook_called = {"pre": False, "post": False}
+        
+        def pre_hook(from_state, to_state, metadata):
+            hook_called["pre"] = True
+            assert from_state == "PENDING"
+            assert to_state == "ACTIVE"
+            assert metadata.get("test") == "data"
+            
+        def post_hook(from_state, to_state, metadata):
+            hook_called["post"] = True
+            assert from_state == "PENDING"
+            assert to_state == "ACTIVE"
+            assert metadata.get("test") == "data"
+            
+        sm = StateMachine(initial_state="PENDING", allowed_transitions={
+            "PENDING": ["ACTIVE"]
+        })
+        
+        sm.register_pre_transition_hook(pre_hook)
+        sm.register_post_transition_hook(post_hook)
+        
+        sm.transition("ACTIVE", metadata={"test": "data"})
+        
+        assert hook_called["pre"] is True
+        assert hook_called["post"] is True
+```
+
+## API Integration Tests
+
+```python
+# agent_registry_service/tests/api/test_agents.py
+import pytest
+import json
+from fastapi import status
+
+def test_update_agent_state_success(client, test_db):
+    # First create an agent
+    agent_data = {
+        "name": "Test Agent",
+        "description": "Test agent for state transition",
+        "agent_type": "STANDARD"
+    }
+    response = client.post("/agents/", json=agent_data)
+    assert response.status_code == status.HTTP_201_CREATED
+    agent_id = response.json()["id"]
+    
+    # Update the agent state
+    state_update = {
+        "state": "ACTIVE",
+        "metadata": {"reason": "Testing state transition", "user_id": "test123"}
+    }
+    response = client.put(f"/agents/{agent_id}/state", json=state_update)
+    assert response.status_code == status.HTTP_200_OK
+    
+    # Verify the state was updated
+    response = client.get(f"/agents/{agent_id}")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["state"] == "ACTIVE"
+    
+    # Check state history is included
+    assert "state_history" in response.json()
+    history = response.json()["state_history"]
+    assert len(history) == 2  # Initial PENDING + ACTIVE
+    assert history[0]["state"] == "PENDING"
+    assert history[1]["state"] == "ACTIVE"
+    assert history[1]["metadata"]["reason"] == "Testing state transition"
+
+def test_update_agent_state_nonexistent(client):
+    state_update = {
+        "state": "ACTIVE",
+        "metadata": {"reason": "Testing with non-existent agent"}
+    }
+    response = client.put("/agents/999999/state", json=state_update)
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+def test_update_agent_state_invalid_transition(client, test_db):
+    # Create an agent
+    agent_data = {"name": "Test Agent", "description": "Test agent", "agent_type": "STANDARD"}
+    response = client.post("/agents/", json=agent_data)
+    agent_id = response.json()["id"]
+    
+    # Try invalid transition (PENDING -> TERMINATED)
+    state_update = {
+        "state": "TERMINATED",
+        "metadata": {"reason": "Testing invalid transition"}
+    }
+    response = client.put(f"/agents/{agent_id}/state", json=state_update)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Invalid state transition" in response.json()["detail"]
+```
+
+## Documentation Template
+
+```markdown
+# Agent State Machine Documentation
+
+## Overview
+
+The Agent Registry Service implements a state machine to track and manage agent lifecycle states. This document describes the state machine implementation, valid state transitions, and how to interact with agent states through the API.
+
+## State Diagram
+
+```
+PENDING ──────► ACTIVE ◄────┐
+                  │          │
+                  ▼          │
+                INACTIVE ────┘
+                  │
+                  ▼
+              TERMINATED
+```
+
+## States
+
+- **PENDING**: Initial state for newly created agents
+- **ACTIVE**: Agent is operational and available for use
+- **INACTIVE**: Agent is temporarily disabled but can be reactivated
+- **TERMINATED**: Agent has been permanently decommissioned
+
+## API Usage
+
+### Update Agent State
+
+```
+PUT /agents/{agent_id}/state
+```
+
+Request body:
+```json
+{
+  "state": "ACTIVE",
+  "metadata": {
+    "reason": "Agent passed validation",
+    "approved_by": "admin@example.com"
+  }
+}
+```
+
+Response (200 OK):
+```json
+{
+  "id": 123,
+  "name": "Example Agent",
+  "state": "ACTIVE",
+  "state_history": [
+    {
+      "state": "PENDING",
+      "timestamp": "2023-07-01T12:00:00Z",
+      "metadata": {}
+    },
+    {
+      "state": "ACTIVE",
+      "timestamp": "2023-07-02T09:30:00Z",
+      "metadata": {
+        "reason": "Agent passed validation",
+        "approved_by": "admin@example.com"
+      }
+    }
+  ]
+}
+```
+
+## Extending the State Machine
+
+To add new states or transitions:
+
+1. Update the `ALLOWED_TRANSITIONS` dictionary in `agent_registry_service/models/agent.py`
+2. Add validation logic for the new state in `agent_registry_service/services/agent_service.py`
+3. Update API documentation to reflect new states
+4. Add tests for the new transitions
+```
+</info added on 2025-05-01T10:55:45.351Z>
+

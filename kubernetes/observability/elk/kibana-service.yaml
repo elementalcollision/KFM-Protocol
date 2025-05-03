@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana-service
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    app: kibana
+spec:
+  selector:
+    app: kibana # Selects the Kibana pod managed by the Deployment
+  ports:
+    - name: http
+      protocol: TCP
+      port: 5601       # Port the service listens on
+      targetPort: 5601 # Port the Kibana container listens on
+  # Use ClusterIP initially, can be changed to NodePort/LoadBalancer 
+  # or exposed via Ingress for external access.
+  type: ClusterIP 

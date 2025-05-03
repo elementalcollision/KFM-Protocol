@@ -1,0 +1,29 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# Kubernetes client (will be needed for infrastructure integration)
+kubernetes>=28.1.0
+
+# HTTP client (for interacting with other KFM services if needed)
+httpx>=0.28.0
+
+# Messaging (for event listening)
+aio-pika>=9.0.0 # Async RabbitMQ client
+
+# Logging
+python-json-logger>=2.0.7
+
+# Monitoring & Tracing (Add now for consistency)
+prometheus-fastapi-instrumentator>=6.0.0
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.41b0
+opentelemetry-instrumentation-httpx>=0.41b0
+opentelemetry-exporter-otlp-proto-http>=1.20.0
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.26.0 

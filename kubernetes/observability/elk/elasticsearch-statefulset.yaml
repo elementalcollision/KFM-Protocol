@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    app: elasticsearch
+spec:
+  serviceName: elasticsearch-headless # Headless service for discovery within the StatefulSet
+  replicas: 1 # Single node for simplicity
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0 # Match version with other ELK components
+        ports:
+        - containerPort: 9200
+          name: http
+        - containerPort: 9300
+          name: transport
+        env:
+          # Set discovery type for single-node cluster
+          - name: discovery.type
+            value: single-node
+          # Set Java Heap size (adjust as needed)
+          - name: ES_JAVA_OPTS
+            value: "-Xms512m -Xmx512m"
+          # Disable security for simplicity in dev/test (DO NOT USE IN PRODUCTION)
+          - name: xpack.security.enabled
+            value: "false"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        readinessProbe:
+          httpGet:
+            path: /_cluster/health?local=true
+            port: 9200
+          initialDelaySeconds: 20
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /_cluster/health?local=true
+            port: 9200
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          failureThreshold: 3
+      # For development/testing, use emptyDir. For production, use volumeClaimTemplates.
+      volumes:
+        - name: data
+          emptyDir: {}
+      # --- Example using PersistentVolumeClaim --- 
+      # volumeClaimTemplates:
+      # - metadata:
+      #     name: data
+      #   spec:
+      #     accessModes: [ "ReadWriteOnce" ]
+      #     storageClassName: "your-storage-class" # Specify your storage class
+      #     resources:
+      #       requests:
+      #         storage: 10Gi # Adjust size as needed 

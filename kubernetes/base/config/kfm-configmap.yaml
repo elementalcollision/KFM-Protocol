@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kfm-ae-config
+  namespace: kfm-ae
+data:
+  # Global settings
+  LOG_LEVEL: "INFO"
+  DEFAULT_NAMESPACE: "kfm-ae"
+
+  # Agent Registry Service specific settings
+  AGENT_REGISTRY_PORT: "8000"
+  AGENT_REGISTRY_MAX_AGENTS: "10000"
+  AGENT_REGISTRY_DEFAULT_PAGE_SIZE: "50"
+
+  # Policy Engine specific settings
+  POLICY_ENGINE_EVALUATION_INTERVAL_SECONDS: "300"
+  POLICY_ENGINE_DEFAULT_ACTION: "LOG"
+
+  # K Operator specific settings
+  K_OPERATOR_DEFAULT_GRACE_PERIOD_DAYS: "14"
+
+  # M Operator specific settings
+  M_OPERATOR_PROMOTION_APPROVALS_REQUIRED: "2"
+
+  # F Operator specific settings (Example)
+  F_OPERATOR_EXPERIMENT_DURATION_HOURS: "48"
+
+  # Add other non-sensitive config key-value pairs here 

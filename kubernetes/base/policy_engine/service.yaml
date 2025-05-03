@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-engine-service
+  namespace: kfm-system # Use the same namespace as the Deployment
+  labels:
+    app: policy-engine
+spec:
+  selector:
+    app: policy-engine # Selects pods with the 'app: policy-engine' label
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000 # Port the service listens on
+      targetPort: 8000 # Port the container listens on (from Deployment)
+  # Expose internally within the cluster
+  type: ClusterIP 

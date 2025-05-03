@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-service
+  namespace: kfm-gateway # Use the same namespace as the Deployment
+  labels:
+    app: api-gateway
+spec:
+  selector:
+    app: api-gateway # Selects pods with the 'app: api-gateway' label
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80 # Port the service listens on
+      targetPort: 8000 # Port the container listens on (from Deployment)
+  # Expose externally using LoadBalancer (adjust for Ingress if preferred)
+  type: LoadBalancer 

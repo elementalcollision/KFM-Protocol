@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: policy-engine-pdb
+  namespace: kfm-system # Use the same namespace as the Deployment
+  labels:
+    app: policy-engine
+spec:
+  # Ensure at least 1 replica is available during disruptions
+  minAvailable: 1 
+  selector:
+    matchLabels:
+      app: policy-engine # Selects the pods managed by the policy-engine Deployment 

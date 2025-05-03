@@ -1,0 +1,30 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: kfm-gateway # Use the same namespace as the Deployment
+  labels:
+    app: api-gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway-deployment # Name of the Deployment to scale
+  minReplicas: 2 # Minimum number of replicas (should match Deployment's initial replicas)
+  maxReplicas: 5 # Maximum number of replicas
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Target average CPU utilization across all pods (e.g., 70%)
+          averageUtilization: 70 
+    # Optional: Add memory-based scaling
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          # Target average Memory utilization across all pods (e.g., 75%)
+          averageUtilization: 75 

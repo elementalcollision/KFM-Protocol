@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alert-rules
+  namespace: kfm-observability
+  labels:
+    app: prometheus
+    role: alert-rules
+data:
+  kfm-alerts.rules.yml: |
+    groups:
+      - name: kfm-service-alerts
+        rules:
+          # Alert for high HTTP 5xx error rate per service
+          - alert: HighHttpErrorRate
+            expr: (
+              sum by (job, namespace, service) (rate(http_requests_total{status=~"5.."}[5m]))
+              /
+              sum by (job, namespace, service) (rate(http_requests_total[5m]))
+            ) * 100 > 5
+            for: 5m # Alert fires if condition is true for 5 minutes
+            labels:
+              severity: critical
+            annotations:
+              summary: "High HTTP 5xx error rate detected for {{ $labels.job }} in {{ $labels.namespace }}"
+              description: "Service {{ $labels.job }} in namespace {{ $labels.namespace }} is experiencing more than 5% HTTP 5xx errors over the last 5 minutes. Current rate: {{ $value | printf \"%.2f\" }}%."
+
+          # Alert if a service instance (pod) disappears from scraping
+          - alert: ServiceInstanceDown
+            expr: up == 0
+            for: 3m # Alert fires if an instance is down for 3 minutes
+            labels:
+              severity: critical
+            annotations:
+              summary: "Service instance {{ $labels.pod }} down"
+              description: "Prometheus target {{ $labels.instance }} (pod {{ $labels.pod }}) has disappeared."
+
+          # Alert for high request latency (e.g., p95 > 500ms)
+          # Note: Requires histogram metrics like fastapi_request_duration_seconds_bucket
+          - alert: HighRequestLatency
+            expr: histogram_quantile(0.95, sum(rate(fastapi_request_duration_seconds_bucket[5m])) by (le, job, namespace, service)) > 0.5
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High p95 request latency detected for {{ $labels.job }}"
+              description: "The 95th percentile request latency for service {{ $labels.job }} in namespace {{ $labels.namespace }} is above 500ms over the last 10 minutes. Current value: {{ $value | printf \"%.2f\" }}s."
+          
+          # Add more alerts as needed (CPU/Memory usage, queue lengths, etc.) 

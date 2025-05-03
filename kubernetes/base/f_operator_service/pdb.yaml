@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: f-operator-pdb
+  namespace: kfm-operators # Use the same namespace as the Deployment
+  labels:
+    app: f-operator
+spec:
+  # Ensure at least 1 replica is available during disruptions
+  minAvailable: 1 
+  selector:
+    matchLabels:
+      app: f-operator # Selects the pods managed by the f-operator Deployment 

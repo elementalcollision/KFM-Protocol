@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-deployment
+  namespace: kfm-observability
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+      # Add annotations for scraping Prometheus itself, if desired
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9090'
+    spec:
+      serviceAccountName: prometheus # Use the ServiceAccount created in rbac.yaml
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest # Use a specific, recent version
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus/"
+            # Optional: Add other Prometheus flags as needed
+            # - "--web.enable-lifecycle"
+          ports:
+            - containerPort: 9090
+              name: http
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/prometheus/
+            - name: storage-volume
+              mountPath: /prometheus/
+            - name: rules-volume # Mount for alert rules
+              mountPath: /etc/prometheus/rules/
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+      volumes:
+        - name: config-volume
+          configMap:
+            name: prometheus-config # Mount the ConfigMap
+        - name: storage-volume
+          emptyDir: {} # Use emptyDir for dev/test. Use PersistentVolumeClaim for production.
+        - name: rules-volume # Define the volume for alert rules
+          configMap:
+            name: prometheus-alert-rules # Reference the alert rules ConfigMap
+            items:
+              - key: kfm-alerts.rules.yml
+                path: kfm-alerts.rules.yml # Mount the specific file
+      # --- Example using PersistentVolumeClaim for storage --- 
+      #   persistentVolumeClaim:
+      #     claimName: prometheus-storage-pvc
+      # Add volumeClaimTemplates for StatefulSet if using that instead of Deployment 

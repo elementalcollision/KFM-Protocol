@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      # Optional: Use a dedicated service account if needed for datasource provisioning
+      # serviceAccountName: grafana 
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest # Use specific version for production
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+          # Basic Grafana config, more can be added
+          - name: GF_SERVER_ROOT_URL
+            value: "http://localhost:3000" # Adjust if using ingress/different host
+          - name: GF_SECURITY_ADMIN_USER
+            value: admin # Default user
+          - name: GF_SECURITY_ADMIN_PASSWORD
+            value: prom-operator # CHANGE THIS IN PRODUCTION! Use secrets.
+          # Disable login form for anonymous access (optional, adjust security as needed)
+          - name: GF_AUTH_ANONYMOUS_ENABLED
+            value: "true"
+          - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+            value: Viewer
+          # Add other env vars for datasource provisioning, plugins etc.
+          # Example for Prometheus datasource (if not using provisioning files):
+          # - name: GF_DATASOURCES_DEFAULT_NAME
+          #   value: Prometheus
+          # - name: GF_DATASOURCES_DEFAULT_TYPE
+          #   value: prometheus
+          # - name: GF_DATASOURCES_DEFAULT_URL
+          #   value: http://prometheus-service.kfm-observability.svc.cluster.local:9090
+          # - name: GF_DATASOURCES_DEFAULT_ACCESS
+          #   value: proxy
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        # Optional: Mount volumes for provisioning datasources/dashboards
+        # - name: grafana-datasources
+        #   mountPath: /etc/grafana/provisioning/datasources
+        # - name: grafana-dashboards
+        #   mountPath: /etc/grafana/provisioning/dashboards 
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          failureThreshold: 3
+      volumes:
+      - name: grafana-storage
+        emptyDir: {} # Use emptyDir for dev/test. Use PersistentVolumeClaim for production.
+      # Optional: Define volumes for provisioning ConfigMaps
+      # - name: grafana-datasources
+      #   configMap:
+      #     name: grafana-datasources-config
+      # - name: grafana-dashboards
+      #   configMap:
+      #     name: grafana-dashboards-config 

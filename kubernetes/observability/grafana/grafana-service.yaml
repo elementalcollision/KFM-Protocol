@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    app: grafana
+spec:
+  selector:
+    app: grafana # Selects the Grafana pod managed by the Deployment
+  ports:
+    - name: http
+      protocol: TCP
+      port: 3000       # Port the service listens on
+      targetPort: 3000 # Port the Grafana container listens on
+  # Expose internally, use NodePort/LoadBalancer/Ingress for external UI access
+  type: ClusterIP 

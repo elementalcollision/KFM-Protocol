@@ -1,0 +1,14 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: kfm-gateway # Use the same namespace as the Deployment
+  labels:
+    app: api-gateway
+spec:
+  # Ensure at least 1 replica is available during disruptions
+  minAvailable: 1 
+  # Alternatively, use maxUnavailable: 1 (allow 1 pod to be unavailable)
+  selector:
+    matchLabels:
+      app: api-gateway # Selects the pods managed by the api-gateway Deployment 

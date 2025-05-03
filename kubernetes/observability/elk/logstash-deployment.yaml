@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    app: logstash
+spec:
+  replicas: 1 # Start with 1, can be scaled later
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: docker.elastic.co/logstash/logstash:8.9.0 # Use a specific, recent version matching other ELK components
+        ports:
+        - containerPort: 5044 # Beats input port
+          name: beats
+        - containerPort: 9600 # Monitoring port
+          name: http
+        env:
+        # Add environment variables if needed for configuration or secrets
+        # - name: ELASTICSEARCH_USERNAME
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: elasticsearch-credentials
+        #       key: username
+        # - name: ELASTICSEARCH_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: elasticsearch-credentials
+        #       key: password
+        # Define Java Heap size
+        - name: LS_JAVA_OPTS
+          value: "-Xms1g -Xmx1g" # Adjust heap size based on expected load
+        resources:
+          # Adjust based on expected load
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/share/logstash/config/logstash.yml
+          subPath: logstash.yml
+        - name: pipelines-volume
+          mountPath: /usr/share/logstash/config/pipelines.yml
+          subPath: pipelines.yml
+        - name: pipeline-volume
+          mountPath: /usr/share/logstash/pipeline/logstash.conf
+          subPath: logstash.conf
+        readinessProbe:
+          httpGet:
+            path: / # Logstash monitoring API
+            port: 9600
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9600
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          failureThreshold: 3
+      volumes:
+      - name: config-volume
+        configMap:
+          name: logstash-config
+          items:
+            - key: logstash.yml
+              path: logstash.yml
+      - name: pipelines-volume
+        configMap:
+          name: logstash-config
+          items:
+            - key: pipelines.yml
+              path: pipelines.yml
+      - name: pipeline-volume
+        configMap:
+          name: logstash-config
+          items:
+            - key: logstash.conf
+              path: logstash.conf 

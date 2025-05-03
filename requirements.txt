@@ -1,0 +1,20 @@
+fastapi
+uvicorn
+sqlalchemy[asyncio]
+alembic
+asyncpg # Or psycopg2-binary depending on sync/async and preference
+python-dotenv
+pydantic
+pydantic-settings
+PyYAML
+httpx # For making HTTP requests (added for policy engine action handler)
+isodate # For parsing ISO 8601 durations (added for K operator config)
+python-jose[cryptography] # For JWT handling (added for K operator auth)
+passlib[bcrypt] # For potential password hashing compatibility (added for K operator auth)
+aio-pika 
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.26.0
+httpx>=0.28.0 # Already present, used by tests and clients
+locust>=2.0.0 # Load testing 

@@ -1,0 +1,801 @@
+# Task ID: 9
+# Title: Implement Agent Discovery Service
+# Status: done
+# Dependencies: 2, 8
+# Priority: medium
+# Description: Create a service that allows agents to discover and interact with other agents based on capabilities and state.
+# Details:
+Develop a discovery service that exposes endpoints for agents to find other agents or services. Implement filtering by type, state, capabilities, and other metadata. Create a registry of agent capabilities that can be queried. Support both exact and fuzzy matching of capabilities. Implement caching for frequently used discovery queries. Ensure only agents in appropriate states (e.g., STABLE, EXPERIMENTAL with proper flags) are discoverable by default. Create subscription mechanisms for agents to be notified of new/changed agents matching criteria.
+
+# Test Strategy:
+Test discovery queries with various filter combinations. Verify only appropriate agents are discoverable. Test performance with large numbers of agents. Verify caching improves repeated query performance. Test subscription notifications when matching agents change.
+
+# Subtasks:
+## 1. Implement Agent Registry Core [done]
+### Dependencies: None
+### Description: Create the foundational registry system that stores agent information and metadata
+### Details:
+Develop a core registry component that maintains a database of all agents in the system. This should include: 1) Data model for agent entries with fields for type, state (STABLE, EXPERIMENTAL), capabilities, and other metadata; 2) Basic CRUD operations for agent registration, updates, and deregistration; 3) Validation logic to ensure required fields are present; 4) State management to track agent lifecycle; 5) Implement proper locking mechanisms for concurrent access. Consider using an in-memory store with persistence backup for performance. Each agent entry should have a unique identifier and timestamp information for created/updated times.
+
+<info added on 2025-05-02T18:34:19.834Z>
+## Technical Implementation Details
+
+### Registry Manager Implementation
+
+```python
+# agent_registry_service/core/registry_manager.py
+import asyncio
+from typing import Dict, List, Optional
+from uuid import UUID
+import logging
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+
+from ..schemas.agent_registry_entry import AgentRegistryEntry
+from ..crud.crud_agent_registry import (
+    create_agent_entry, get_agent_entry, get_all_agent_entries,
+    update_agent_entry, delete_agent_entry
+)
+from ..db.session import get_db
+
+logger = logging.getLogger(__name__)
+
+class RegistryManager:
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(RegistryManager, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if self._initialized:
+            return
+            
+        self._registry: Dict[UUID, AgentRegistryEntry] = {}
+        self._lock = asyncio.Lock()
+        self._initialized = True
+        logger.info("Registry Manager initialized")
+    
+    async def initialize_from_db(self, db: AsyncSession):
+        """Load all agent entries from database into memory on startup"""
+        async with self._lock:
+            logger.info("Loading agent registry from database")
+            entries = await get_all_agent_entries(db)
+            self._registry = {entry.id: entry for entry in entries}
+            logger.info(f"Loaded {len(self._registry)} agent entries into registry")
+    
+    async def register_agent(self, agent: AgentRegistryEntry, db: AsyncSession) -> AgentRegistryEntry:
+        """Register a new agent in both memory and database"""
+        async with self._lock:
+            # First persist to database
+            db_agent = await create_agent_entry(db, agent)
+            # Then update in-memory store
+            self._registry[db_agent.id] = db_agent
+            return db_agent
+    
+    async def get_agent(self, agent_id: UUID) -> Optional[AgentRegistryEntry]:
+        """Get agent from in-memory store"""
+        return self._registry.get(agent_id)
+    
+    async def get_all_agents(self) -> List[AgentRegistryEntry]:
+        """Get all agents from in-memory store"""
+        return list(self._registry.values())
+    
+    async def update_agent(self, agent_id: UUID, agent_data: dict, db: AsyncSession) -> Optional[AgentRegistryEntry]:
+        """Update agent in both memory and database"""
+        async with self._lock:
+            if agent_id not in self._registry:
+                return None
+                
+            # Update in database first
+            updated_agent = await update_agent_entry(db, agent_id, agent_data)
+            if updated_agent:
+                # Then update in-memory store
+                self._registry[agent_id] = updated_agent
+            return updated_agent
+    
+    async def deregister_agent(self, agent_id: UUID, db: AsyncSession) -> bool:
+        """Remove agent from both memory and database"""
+        async with self._lock:
+            if agent_id not in self._registry:
+                return False
+                
+            # Delete from database first
+            success = await delete_agent_entry(db, agent_id)
+            if success:
+                # Then remove from in-memory store
+                del self._registry[agent_id]
+            return success
+
+# Singleton instance
+registry_manager = RegistryManager()
+
+# Dependency for FastAPI
+async def get_registry_manager():
+    return registry_manager
+```
+
+### Database Model with Indexes
+
+```python
+# agent_registry_service/models/agent_registry_entry.py
+from sqlalchemy import Column, String, DateTime, Enum, JSON, Index, func
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
+import uuid
+import enum
+from datetime import datetime
+
+from ..db.base_class import Base
+
+class AgentState(str, enum.Enum):
+    STABLE = "STABLE"
+    EXPERIMENTAL = "EXPERIMENTAL"
+
+class AgentRegistryEntryModel(Base):
+    __tablename__ = "agent_registry_entries"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    type = Column(String, nullable=False, index=True)
+    state = Column(Enum(AgentState), nullable=False, default=AgentState.EXPERIMENTAL)
+    capabilities = Column(ARRAY(String), nullable=False, default=[])
+    metadata = Column(JSON, nullable=False, default={})
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Create indexes for common query patterns
+    __table_args__ = (
+        Index('ix_agent_type_state', 'type', 'state'),
+        Index('ix_agent_capabilities', 'capabilities', postgresql_using='gin'),
+    )
+```
+
+### Startup Integration
+
+```python
+# agent_registry_service/main.py (partial)
+from fastapi import FastAPI, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .db.session import get_db
+from .core.registry_manager import registry_manager
+
+app = FastAPI(title="Agent Registry Service")
+
+@app.on_event("startup")
+async def startup_db_client():
+    # Get a database session
+    db = next(get_db())
+    # Initialize the registry manager with data from the database
+    await registry_manager.initialize_from_db(db)
+```
+
+### Error Handling Strategy
+
+Implement a consistent error handling approach:
+
+1. Create custom exceptions for registry-specific errors:
+   ```python
+   # agent_registry_service/core/exceptions.py
+   class AgentRegistryError(Exception):
+       """Base exception for agent registry errors"""
+       pass
+       
+   class AgentNotFoundError(AgentRegistryError):
+       """Raised when an agent is not found in the registry"""
+       pass
+       
+   class AgentValidationError(AgentRegistryError):
+       """Raised when agent data fails validation"""
+       pass
+       
+   class AgentConflictError(AgentRegistryError):
+       """Raised when there's a conflict with existing agent data"""
+       pass
+   ```
+
+2. Add exception handlers in FastAPI to return appropriate HTTP status codes:
+   ```python
+   # In main.py
+   from fastapi import Request, status
+   from fastapi.responses import JSONResponse
+   from .core.exceptions import AgentNotFoundError, AgentValidationError, AgentConflictError
+   
+   @app.exception_handler(AgentNotFoundError)
+   async def agent_not_found_handler(request: Request, exc: AgentNotFoundError):
+       return JSONResponse(
+           status_code=status.HTTP_404_NOT_FOUND,
+           content={"detail": str(exc) or "Agent not found"}
+       )
+   
+   @app.exception_handler(AgentValidationError)
+   async def agent_validation_error_handler(request: Request, exc: AgentValidationError):
+       return JSONResponse(
+           status_code=status.HTTP_400_BAD_REQUEST,
+           content={"detail": str(exc)}
+       )
+       
+   @app.exception_handler(AgentConflictError)
+   async def agent_conflict_error_handler(request: Request, exc: AgentConflictError):
+       return JSONResponse(
+           status_code=status.HTTP_409_CONFLICT,
+           content={"detail": str(exc)}
+       )
+   ```
+</info added on 2025-05-02T18:34:19.834Z>
+
+## 2. Build Discovery Query API [done]
+### Dependencies: 9.1
+### Description: Create API endpoints for querying the agent registry with filtering capabilities
+### Details:
+Develop REST API endpoints that allow agents to discover other agents based on various criteria. Implement: 1) Query parameters for filtering by type, state, capabilities, and other metadata; 2) Support for both exact and fuzzy matching of capabilities using appropriate string matching algorithms; 3) Pagination for large result sets; 4) Sorting options for different fields; 5) Response formatting with relevant agent information; 6) Input validation and error handling. The API should follow RESTful principles with clear documentation. Ensure that only agents in appropriate states (STABLE or EXPERIMENTAL with proper flags) are returned by default, with options to override this behavior when needed.
+
+<info added on 2025-05-02T20:16:47.895Z>
+# Implementation Details for Discovery Query API
+
+## API Design Considerations
+- Use POST instead of GET for complex filtering to avoid URL length limitations
+- Implement proper HTTP status codes (200 for success, 400 for invalid requests, 404 for no results)
+- Add ETag support for caching frequently used queries
+
+## Fuzzy Matching Implementation
+```python
+from thefuzz import fuzz
+
+def fuzzy_capability_match(agent_capabilities, requested_capabilities, threshold=70):
+    """Match capabilities using fuzzy string matching with configurable threshold."""
+    matches = []
+    for req_cap in requested_capabilities:
+        best_match_score = 0
+        for agent_cap in agent_capabilities:
+            score = fuzz.ratio(req_cap.lower(), agent_cap.lower())
+            best_match_score = max(best_match_score, score)
+        matches.append(best_match_score >= threshold)
+    return all(matches)  # All requested capabilities must match
+```
+
+## Query Optimization
+- Implement query caching with TTL for frequent discovery patterns
+- Use database indexing on common filter fields (type, state, creation_date)
+- For MongoDB implementation, create compound indexes for common query patterns
+
+## Example Request/Response
+```json
+// Request
+{
+  "type": "assistant",
+  "capabilities": ["text-generation", "summarization"],
+  "capability_match_type": "FUZZY",
+  "metadata_filters": {"domain": "finance"},
+  "pagination": {"skip": 0, "limit": 10},
+  "sort_by": "CREATED_AT_DESC"
+}
+
+// Response
+{
+  "items": [/* array of matching AgentRegistryEntry objects */],
+  "total": 42,
+  "limit": 10,
+  "skip": 0
+}
+```
+
+## Testing Strategy
+- Unit tests for each filter type independently
+- Integration tests for combined filters
+- Performance tests with large agent datasets (1000+ agents)
+- Fuzzy matching accuracy tests with similar capability strings
+</info added on 2025-05-02T20:16:47.895Z>
+
+## 3. Implement Caching Layer [done]
+### Dependencies: 9.2
+### Description: Add caching mechanisms for frequently used discovery queries
+### Details:
+Develop a caching system to improve performance of frequent discovery queries: 1) Implement a time-based cache for query results with configurable TTL; 2) Create cache invalidation mechanisms when agents are updated or removed; 3) Add cache statistics for monitoring performance; 4) Implement cache size limits to prevent memory issues; 5) Support for cache warming for common queries; 6) Consider using a distributed cache if the service needs to scale across multiple instances. The caching layer should be transparent to API consumers but provide significant performance improvements for repeated queries. Include metrics collection to measure cache hit/miss rates and optimize accordingly.
+
+<info added on 2025-05-02T20:19:59.436Z>
+# Redis-Based Caching Implementation Details
+
+## Core Redis Configuration
+```python
+# core/config.py additions
+REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
+REDIS_SSL: bool = os.getenv("REDIS_SSL", "false").lower() == "true"
+DISCOVERY_CACHE_TTL_SECONDS: int = int(os.getenv("DISCOVERY_CACHE_TTL_SECONDS", "300"))
+CACHE_MAX_MEMORY_MB: int = int(os.getenv("CACHE_MAX_MEMORY_MB", "512"))
+```
+
+## Redis Client Setup
+```python
+# db/cache.py
+import json
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Generic
+import redis.asyncio as redis
+from fastapi import Depends
+
+from core.config import settings
+
+_redis_pool: Optional[redis.ConnectionPool] = None
+
+async def init_redis_pool() -> redis.ConnectionPool:
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = redis.ConnectionPool(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB,
+            password=settings.REDIS_PASSWORD,
+            ssl=settings.REDIS_SSL,
+            decode_responses=True,
+            max_connections=50
+        )
+    return _redis_pool
+
+async def get_redis_client() -> redis.Redis:
+    pool = await init_redis_pool()
+    return redis.Redis(connection_pool=pool)
+
+T = TypeVar('T')
+class CacheManager(Generic[T]):
+    """Generic cache manager for handling Redis caching operations"""
+    
+    def __init__(self, redis_client: redis.Redis, prefix: str, ttl_seconds: int):
+        self.redis = redis_client
+        self.prefix = prefix
+        self.ttl = ttl_seconds
+    
+    def make_key(self, key_parts: Any) -> str:
+        """Create a deterministic cache key from input parameters"""
+        if isinstance(key_parts, dict):
+            # Sort dict keys for consistent hashing
+            serialized = json.dumps(key_parts, sort_keys=True)
+        else:
+            serialized = str(key_parts)
+        
+        import hashlib
+        hashed = hashlib.md5(serialized.encode()).hexdigest()
+        return f"{self.prefix}:{hashed}"
+    
+    async def get(self, key_parts: Any) -> Optional[T]:
+        """Get item from cache"""
+        key = self.make_key(key_parts)
+        data = await self.redis.get(key)
+        if data:
+            return json.loads(data)
+        return None
+    
+    async def set(self, key_parts: Any, value: T) -> None:
+        """Set item in cache with TTL"""
+        key = self.make_key(key_parts)
+        await self.redis.setex(key, self.ttl, json.dumps(value))
+    
+    async def invalidate(self, key_parts: Optional[Any] = None) -> None:
+        """Invalidate specific key or pattern"""
+        if key_parts:
+            key = self.make_key(key_parts)
+            await self.redis.delete(key)
+        else:
+            # Invalidate all keys with this prefix
+            pattern = f"{self.prefix}:*"
+            keys = await self.redis.keys(pattern)
+            if keys:
+                await self.redis.delete(*keys)
+```
+
+## Cache Warming Implementation
+```python
+# services/cache_warmer.py
+import asyncio
+import logging
+from datetime import datetime
+from typing import List, Dict, Any
+
+from db.cache import get_redis_client
+from core.registry_manager import RegistryManager
+from models.discovery import DiscoveryCriteria
+
+logger = logging.getLogger(__name__)
+
+class CacheWarmer:
+    """Service to pre-warm the discovery cache with common queries"""
+    
+    def __init__(self, registry_manager: RegistryManager):
+        self.registry = registry_manager
+        
+    async def warm_common_queries(self) -> None:
+        """Warm cache with common discovery patterns"""
+        logger.info("Starting cache warming process")
+        
+        # Common query patterns to pre-warm
+        common_queries = [
+            DiscoveryCriteria(),  # All agents
+            DiscoveryCriteria(status="active"),  # Active agents
+            DiscoveryCriteria(capabilities=["text-generation"]),  # Text generation agents
+            DiscoveryCriteria(capabilities=["image-generation"]),  # Image generation agents
+            DiscoveryCriteria(capabilities=["text-generation", "reasoning"]),  # LLM agents
+        ]
+        
+        # Execute all queries to populate cache
+        for criteria in common_queries:
+            try:
+                await self.registry.discover_agents(criteria)
+                logger.debug(f"Warmed cache for query: {criteria}")
+            except Exception as e:
+                logger.error(f"Error warming cache for {criteria}: {str(e)}")
+                
+        logger.info("Cache warming completed")
+    
+    async def start_periodic_warming(self, interval_minutes: int = 30) -> None:
+        """Start periodic cache warming in background"""
+        while True:
+            await self.warm_common_queries()
+            await asyncio.sleep(interval_minutes * 60)
+```
+
+## Metrics Collection
+```python
+# monitoring/metrics.py
+from prometheus_client import Counter, Histogram
+
+# Cache metrics
+CACHE_HITS = Counter(
+    'discovery_cache_hits_total', 
+    'Total number of cache hits for discovery queries'
+)
+
+CACHE_MISSES = Counter(
+    'discovery_cache_misses_total', 
+    'Total number of cache misses for discovery queries'
+)
+
+CACHE_LATENCY = Histogram(
+    'discovery_cache_latency_seconds',
+    'Latency for cache operations',
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]
+)
+
+# Export metrics for monitoring dashboard
+def get_cache_hit_ratio():
+    hits = CACHE_HITS._value.get()
+    misses = CACHE_MISSES._value.get()
+    total = hits + misses
+    return hits / total if total > 0 else 0
+```
+</info added on 2025-05-02T20:19:59.436Z>
+
+## 4. Create Subscription Mechanism [done]
+### Dependencies: 9.1, 9.2
+### Description: Implement a system for agents to subscribe to notifications about agent changes
+### Details:
+Build a subscription system that allows agents to be notified when new agents matching their criteria appear or existing ones change: 1) Create subscription registration endpoints where agents can specify criteria of interest; 2) Implement an event system that triggers when agent registry changes occur; 3) Add filtering logic to match events against subscription criteria; 4) Develop notification delivery mechanisms (webhooks, message queue, etc.); 5) Include subscription management for updating or canceling subscriptions; 6) Add retry logic for failed notification deliveries. The subscription system should be efficient and avoid unnecessary notifications. Consider using a pub/sub pattern with appropriate message brokers for scalability.
+
+<info added on 2025-05-02T20:23:41.924Z>
+# Implementation Details for Subscription Mechanism
+
+## Technical Architecture
+
+### Event Flow
+1. **Event Generation**: When an agent is registered/updated/deregistered, an event is published to Redis
+2. **Event Processing**: Subscription service processes events, matching against stored subscription criteria
+3. **Notification Delivery**: Matching events trigger webhook calls to subscribers
+
+### Redis Message Structure
+```json
+{
+  "event_type": "agent_created|agent_updated|agent_deleted",
+  "timestamp": "2023-11-15T14:30:00Z",
+  "agent_id": "uuid-string",
+  "agent_data": {
+    // Full agent data for created/updated events
+  }
+}
+```
+
+### Subscription Criteria Schema
+```python
+class SubscriptionCriteria(BaseModel):
+    agent_types: Optional[List[str]] = None
+    capabilities: Optional[List[str]] = None
+    name_contains: Optional[str] = None
+    min_trust_score: Optional[float] = None
+    event_types: List[str] = ["agent_created", "agent_updated", "agent_deleted"]
+    
+    class Config:
+        extra = "forbid"
+```
+
+### Criteria Matching Algorithm
+```python
+async def matches_criteria(agent_data: dict, criteria: SubscriptionCriteria, event_type: str) -> bool:
+    """Determine if an agent event matches subscription criteria"""
+    # Check event type first (most efficient filter)
+    if event_type not in criteria.event_types:
+        return False
+        
+    # For deletion events, we only check event_type
+    if event_type == "agent_deleted":
+        return True
+        
+    # Check other criteria
+    if criteria.agent_types and agent_data["agent_type"] not in criteria.agent_types:
+        return False
+        
+    if criteria.capabilities:
+        agent_capabilities = set(agent_data["capabilities"])
+        if not any(cap in agent_capabilities for cap in criteria.capabilities):
+            return False
+            
+    if criteria.name_contains and criteria.name_contains.lower() not in agent_data["name"].lower():
+        return False
+        
+    if criteria.min_trust_score is not None and agent_data["trust_score"] < criteria.min_trust_score:
+        return False
+        
+    return True
+```
+
+### Webhook Retry Strategy
+```python
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException)),
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
+async def send_webhook_notification(url: str, payload: dict) -> bool:
+    """Send notification with exponential backoff retry"""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
+        return True
+```
+
+### Performance Considerations
+1. Use connection pooling for Redis and HTTP clients
+2. Implement batch processing for high-volume events
+3. Add rate limiting per subscriber to prevent overwhelming webhook endpoints
+4. Consider adding a dead letter queue for persistently failing notifications
+5. Add metrics collection for subscription matching and delivery performance
+
+### Testing Strategy
+1. Unit tests for criteria matching logic
+2. Integration tests with Redis Pub/Sub
+3. Mock webhook endpoints for delivery testing
+4. Load testing with simulated high event volumes
+</info added on 2025-05-02T20:23:41.924Z>
+
+## 5. Implement Security and Monitoring [done]
+### Dependencies: 9.1, 9.2, 9.3, 9.4
+### Description: Add security controls and monitoring capabilities to the discovery service
+### Details:
+Enhance the discovery service with security features and monitoring: 1) Implement authentication and authorization for all API endpoints; 2) Add rate limiting to prevent abuse; 3) Create detailed logging for all operations; 4) Implement metrics collection for performance monitoring; 5) Add health check endpoints for service status; 6) Create alerting for unusual patterns or errors; 7) Implement proper error handling and graceful degradation; 8) Add configuration options for security policies (e.g., which agent states are discoverable by default). Security should ensure that agents can only discover other agents they have permission to interact with, and monitoring should provide visibility into service usage patterns and performance.
+
+<info added on 2025-05-02T20:32:23.198Z>
+# Implementation Details for Security and Monitoring
+
+## Authentication & Authorization Implementation
+```python
+# app/security/deps.py
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
+from jose import jwt, JWTError
+from app.core.config import settings
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+api_key_header = APIKeyHeader(name="X-API-Key")
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    return user_id
+
+async def check_permission(required_permission: str, user_id: str = Depends(get_current_user)):
+    # Implement permission check logic here
+    # Example: Query user permissions from database
+    user_permissions = ["registry:read"]  # Replace with actual permissions lookup
+    if required_permission not in user_permissions:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return True
+```
+
+## Rate Limiting Implementation
+```python
+# app/middleware/rate_limit.py
+from fastapi import Request, HTTPException
+import time
+import redis
+from app.core.config import settings
+
+class RateLimitMiddleware:
+    def __init__(self, redis_client: redis.Redis):
+        self.redis_client = redis_client
+        self.rate_limit = settings.RATE_LIMIT_PER_MINUTE
+        self.window = 60  # seconds
+        
+    async def __call__(self, request: Request, call_next):
+        # Get client identifier (IP or user ID if authenticated)
+        client_id = request.client.host
+        if "user_id" in request.state:
+            client_id = f"user:{request.state.user_id}"
+            
+        # Implement sliding window rate limiting
+        current_time = int(time.time())
+        key = f"ratelimit:{client_id}:{current_time // self.window}"
+        
+        # Increment counter for this window
+        current_count = self.redis_client.incr(key)
+        # Set expiry if this is a new key
+        if current_count == 1:
+            self.redis_client.expire(key, self.window * 2)
+            
+        if current_count > self.rate_limit:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+            
+        response = await call_next(request)
+        return response
+```
+
+## Metrics Collection
+```python
+# In app/main.py
+from prometheus_fastapi_instrumentator import Instrumentator, metrics
+from prometheus_client import Counter, Histogram
+
+# Custom metrics
+agent_registrations = Counter(
+    "agent_registrations_total", 
+    "Total number of agent registrations",
+    ["status"]  # success/failure
+)
+subscription_operations = Counter(
+    "subscription_operations_total",
+    "Total number of subscription operations",
+    ["operation", "status"]  # create/update/delete, success/failure
+)
+discovery_requests = Histogram(
+    "discovery_requests_duration_seconds",
+    "Discovery request duration in seconds",
+    ["filter_type", "result_size_bucket"]
+)
+
+# Setup instrumentator
+def setup_metrics(app):
+    instrumentator = Instrumentator(
+        should_group_status_codes=True,
+        should_ignore_untemplated=True,
+        should_respect_env_var=True,
+        should_instrument_requests_inprogress=True,
+        excluded_handlers=["/metrics", "/health"],
+        env_var_name="ENABLE_METRICS",
+    )
+    
+    # Add default metrics
+    instrumentator.add(metrics.latency())
+    instrumentator.add(metrics.requests())
+    
+    # Instrument app
+    instrumentator.instrument(app).expose(app, include_in_schema=False)
+```
+
+## Health Check Implementation
+```python
+# In app/api/endpoints/health.py
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db
+from app.cache.redis_client import get_redis_client
+import redis
+
+router = APIRouter()
+
+@router.get("/health", tags=["health"])
+async def health_check(
+    db: AsyncSession = Depends(get_db),
+    redis_client: redis.Redis = Depends(get_redis_client)
+):
+    health_status = {
+        "status": "ok",
+        "components": {
+            "database": "ok",
+            "cache": "ok",
+            "subscription_service": "ok"
+        },
+        "version": "1.0.0"
+    }
+    
+    # Check database
+    try:
+        result = await db.execute("SELECT 1")
+        if not result:
+            health_status["components"]["database"] = "error"
+            health_status["status"] = "degraded"
+    except Exception:
+        health_status["components"]["database"] = "error"
+        health_status["status"] = "degraded"
+    
+    # Check Redis
+    try:
+        if not redis_client.ping():
+            health_status["components"]["cache"] = "error"
+            health_status["status"] = "degraded"
+    except Exception:
+        health_status["components"]["cache"] = "error"
+        health_status["status"] = "degraded"
+    
+    # Check subscription service
+    from app.services.subscription_service import subscription_service
+    if not subscription_service.is_running():
+        health_status["components"]["subscription_service"] = "error"
+        health_status["status"] = "degraded"
+    
+    return health_status
+```
+
+## Error Handling
+```python
+# app/exceptions.py
+class RegistryException(Exception):
+    """Base exception for registry service"""
+    def __init__(self, message: str, status_code: int = 400):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(self.message)
+
+class AgentNotFoundException(RegistryException):
+    """Raised when an agent is not found"""
+    def __init__(self, agent_id: str):
+        super().__init__(f"Agent with ID {agent_id} not found", 404)
+
+class SubscriptionException(RegistryException):
+    """Base exception for subscription operations"""
+    pass
+
+# app/error_handlers.py
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+from app.exceptions import RegistryException, AgentNotFoundException, SubscriptionException
+
+async def registry_exception_handler(request: Request, exc: RegistryException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message}
+    )
+
+def setup_error_handlers(app):
+    app.add_exception_handler(RegistryException, registry_exception_handler)
+    app.add_exception_handler(AgentNotFoundException, registry_exception_handler)
+    app.add_exception_handler(SubscriptionException, registry_exception_handler)
+```
+
+## Configurable Security Policies
+```python
+# In core/config.py
+class Settings:
+    # ... existing settings
+    
+    # Security policies
+    DEFAULT_DISCOVERABLE_STATES: list[str] = ["active", "idle"]
+    REQUIRE_AUTH_FOR_DISCOVERY: bool = True
+    MAX_DISCOVERY_RESULTS: int = 100
+    ENABLE_SUBSCRIPTION_NOTIFICATIONS: bool = True
+    
+    # Rate limiting
+    RATE_LIMIT_PER_MINUTE: int = 60
+```
+</info added on 2025-05-02T20:32:23.198Z>
+

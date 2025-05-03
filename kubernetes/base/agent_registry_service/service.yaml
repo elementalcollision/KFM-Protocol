@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-registry-service
+  namespace: kfm-agents # Use the same namespace as the Deployment
+  labels:
+    app: agent-registry
+spec:
+  selector:
+    app: agent-registry # Selects pods with the 'app: agent-registry' label
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000 # Port the service listens on
+      targetPort: 8000 # Port the container listens on (from Deployment)
+  # Expose internally within the cluster
+  type: ClusterIP 

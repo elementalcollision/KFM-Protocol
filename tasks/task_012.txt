@@ -1,0 +1,128 @@
+# Task ID: 12
+# Title: Develop Configuration Management System
+# Status: done
+# Dependencies: 2
+# Priority: medium
+# Description: Implement a system for managing and distributing configuration across the KFM-AE services.
+# Details:
+Set up a configuration management system using tools like Consul, etcd, or Kubernetes ConfigMaps/Secrets. Externalize all configuration (database connections, policy parameters, thresholds) from code. Implement secure handling of sensitive configuration (credentials, API keys) using appropriate secret management. Create a configuration API for retrieving and updating configuration values. Support dynamic configuration updates without service restarts where possible. Implement configuration versioning and change history. Create validation for configuration changes to prevent invalid configurations.
+
+# Test Strategy:
+Test configuration retrieval across services. Verify secure handling of sensitive configuration. Test dynamic configuration updates. Verify validation prevents invalid configurations. Test configuration versioning and history tracking.
+
+# Subtasks:
+## 1. Select and Set Up Configuration Management Tooling [done]
+### Dependencies: None
+### Description: Evaluate and choose a configuration management solution (e.g., Consul, etcd, Kubernetes ConfigMaps/Secrets) suitable for KFM-AE services. Set up the chosen tool in a development environment and establish connectivity with all relevant services.
+### Details:
+Assess the requirements for distributed configuration, secret management, and integration with existing infrastructure. Install and configure the selected tool, ensuring it supports both non-sensitive and sensitive configuration storage. Document the setup process and initial configuration structure.
+
+## 2. Externalize and Structure All Service Configuration [done]
+### Dependencies: 12.1
+### Description: Refactor KFM-AE services to externalize all configuration parameters (database connections, policy parameters, thresholds) from code into the configuration management system. Define a clear schema and structure for configuration items.
+### Details:
+Identify all configuration items currently hardcoded or statically defined in each service. Migrate these to the configuration management tool, using namespaces or keys for logical grouping. Update service code to retrieve configuration at startup and, where possible, at runtime.
+
+<info added on 2025-05-01T14:10:06.730Z>
+# Implementation Plan for Configuration Externalization
+
+## Configuration Structure
+- Implement a hierarchical YAML structure with service-specific namespaces:
+  ```yaml
+  services:
+    agent_registry:
+      database:
+        connection_timeout_ms: 5000
+        max_pool_size: 20
+      api:
+        rate_limit: 100
+        cache_ttl_seconds: 300
+    policy_engine:
+      rules:
+        evaluation_timeout_ms: 2000
+        max_depth: 5
+  ```
+
+## Implementation Steps
+1. **Configuration Discovery Tool**:
+   - Create a Python script that scans codebase for hardcoded values:
+     ```python
+     def scan_for_hardcoded_config(root_dir):
+         patterns = [
+             r'(?:const|let|var)\s+\w+\s*=\s*["\'][\w\d]+["\']',  # JS constants
+             r'(?:const|let|var)\s+\w+\s*=\s*\d+',                # JS numeric constants
+             r'[A-Z_]+\s*=\s*["\'][\w\d]+["\']',                  # Python constants
+             r'[A-Z_]+\s*=\s*\d+'                                 # Python numeric constants
+         ]
+         # Implementation continues...
+     ```
+
+2. **Configuration Loading Mechanism**:
+   - Create a `ConfigProvider` class with hot-reload capability:
+     ```python
+     class ConfigProvider:
+         def __init__(self, config_path, refresh_interval=60):
+             self.config_path = config_path
+             self.refresh_interval = refresh_interval
+             self.last_loaded = 0
+             self.config = {}
+             self._load_config()
+             
+         def get(self, key, default=None):
+             self._check_refresh()
+             return self._get_nested_value(key, default)
+             
+         def _check_refresh(self):
+             if time.time() - self.last_loaded > self.refresh_interval:
+                 self._load_config()
+     ```
+
+3. **Secret Management Integration**:
+   - Implement a `SecretProvider` that interfaces with vault/AWS Secrets Manager:
+     ```python
+     class SecretProvider:
+         def __init__(self, secret_backend="vault"):
+             self.backend = self._initialize_backend(secret_backend)
+             
+         def get_secret(self, secret_name):
+             return self.backend.fetch_secret(secret_name)
+     ```
+
+4. **Configuration Validation**:
+   - Create JSON Schema definitions for each service configuration
+   - Implement validation on service startup:
+     ```python
+     def validate_config(config_dict, schema_path):
+         with open(schema_path) as f:
+             schema = json.load(f)
+         jsonschema.validate(instance=config_dict, schema=schema)
+     ```
+
+5. **Migration Strategy**:
+   - Implement feature flags to gradually transition to externalized config
+   - Create fallback mechanisms for backward compatibility
+
+## Testing Approach
+- Unit tests with mock configuration providers
+- Integration tests with actual configuration files
+- Chaos testing with intentionally malformed configuration
+</info added on 2025-05-01T14:10:06.730Z>
+
+## 3. Implement Secure Secret Management [done]
+### Dependencies: 12.1, 12.2
+### Description: Integrate secure handling of sensitive configuration such as credentials and API keys using the secret management features of the chosen tool. Ensure encryption at rest and in transit, and restrict access via fine-grained permissions.
+### Details:
+Configure secret storage and access policies within the configuration management system. Update services to fetch secrets securely at runtime. Audit and remove any sensitive data from code repositories. Document secret rotation and access procedures.
+
+## 4. Develop Configuration API and Dynamic Update Mechanism [done]
+### Dependencies: 12.2, 12.3
+### Description: Create an internal API for retrieving and updating configuration values. Implement support for dynamic configuration updates in services, allowing changes to take effect without restarts where feasible.
+### Details:
+Design and implement a RESTful or gRPC API for configuration access and modification, with authentication and authorization controls. Update services to watch for configuration changes (e.g., via polling or event-driven updates) and reload configuration dynamically. Ensure robust error handling and fallback behavior.
+
+## 5. Add Configuration Versioning, Change History, and Validation [done]
+### Dependencies: 12.4
+### Description: Implement versioning and change history tracking for all configuration items. Add validation logic to prevent invalid configuration changes and provide audit trails for compliance.
+### Details:
+Leverage the configuration management tool’s versioning features or implement custom version tracking. Store and expose change history for each configuration item. Integrate validation rules into the configuration API to check for schema compliance and logical correctness before accepting updates. Provide mechanisms for rollback to previous versions if needed.
+

@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: locustfile-config
+  namespace: f-operator
+data:
+  locustfile.py: |
+    from locust import HttpUser, task, between
+    import random
+    import uuid
+
+    API_KEY = "supersecretkey"  # Set to match your test config
+    AGENT_IDS = ["agent-123", "agent-456", "agent-789"]
+    SERVICES = ["agent-registry", "f-operator"]
+    OPERATIONS = ["list_agents", "execute_function"]
+
+    class APIGatewayUser(HttpUser):
+        wait_time = between(0.5, 2.0)
+        
+        def on_start(self):
+            self.headers = {"x-api-key": API_KEY, "content-type": "application/json"}
+
+        @task(3)
+        def list_agents(self):
+            self.client.get("/api/v1/agents", headers=self.headers)
+
+        @task(2)
+        def get_agent(self):
+            agent_id = random.choice(AGENT_IDS)
+            self.client.get(f"/api/v1/agents/{agent_id}", headers=self.headers)
+
+        @task(2)
+        def dynamic_route_agents(self):
+            self.client.get("/api/v1/agent-registry/agents", headers=self.headers)
+
+        @task(1)
+        def submit_async_job(self):
+            service = random.choice(SERVICES)
+            operation = random.choice(OPERATIONS)
+            payload = {"payload": {"foo": str(uuid.uuid4())}}
+            self.client.post(f"/api/v1/async/{service}/{operation}", json=payload, headers=self.headers)
+
+        @task(1)
+        def get_nonexistent_agent(self):
+            self.client.get(f"/api/v1/agents/nonexistent-{uuid.uuid4()}", headers=self.headers)
+
+    # To run:
+    # locust -f api_gateway_service/tests/locustfile.py --host=http://localhost:8000 

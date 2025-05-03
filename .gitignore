@@ -1,0 +1,59 @@
+# Python general
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.env
+.venv/
+venv/
+ENV/
+env.bak
+venv.bak
+
+# Pytest
+.pytest_cache/
+
+# VS Code
+.vscode/
+
+# Cursor
+.cursor/
+
+# macOS
+.DS_Store
+
+# Swap files
+*.swp
+*.swo
+*.swn
+
+# Log files
+logs/
+*.log
+
+# Task Master Generated Files
+tasks.json # Main task list file (often checked in)
+tasks/ # Individual markdown task files (usually generated, ignored)
+scripts/task-complexity-report.json # Generated report
+
+# Dependency directories
+node_modules/
+
+# Editor directories and files
+.idea
+
+# Task files
+tasks.json
+
+# New additions from the code block
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Other specific ignores
+# Example:
+# output/
+# build/ 

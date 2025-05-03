@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    k8s-app: filebeat
+spec:
+  selector:
+    matchLabels:
+      k8s-app: filebeat
+  template:
+    metadata:
+      labels:
+        k8s-app: filebeat
+    spec:
+      serviceAccountName: filebeat # Use the ServiceAccount created in rbac.yaml
+      terminationGracePeriodSeconds: 30
+      hostNetwork: true # Optional: Might be needed depending on network policy
+      dnsPolicy: ClusterFirstWithHostNet # Use if hostNetwork: true
+      containers:
+      - name: filebeat
+        image: docker.elastic.co/beats/filebeat:8.9.0 # Use a specific, recent version
+        args: [
+          "-c", "/etc/filebeat.yml",
+          "-e",
+        ]
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        # Add environment variables for Logstash connection, Elasticsearch, etc. if needed
+        # - name: LOGSTASH_HOSTS
+        #   value: logstash-service.kfm-observability.svc.cluster.local:5044
+        securityContext:
+          runAsUser: 0 # Filebeat needs root permissions to access logs
+          # privileged: true # Might be needed in some environments
+        resources:
+          requests:
+            memory: "100Mi"
+            cpu: "100m"
+          limits:
+            memory: "200Mi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/filebeat.yml
+          readOnly: true
+          subPath: filebeat.yml
+        - name: data
+          mountPath: /usr/share/filebeat/data
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        - name: varlogcontainers
+          mountPath: /var/log/containers
+          readOnly: true
+        - name: varlogpods # Mount pod log directory
+          mountPath: /var/log/pods
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          defaultMode: 0640
+          name: filebeat-config # Mount the ConfigMap
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: varlogcontainers
+        hostPath:
+          path: /var/log/containers
+      - name: varlogpods # Define hostPath volume for pod logs
+        hostPath:
+          path: /var/log/pods
+      - name: data # Filebeat data path for registry
+        hostPath:
+          # Make sure the directory exists on the host or use emptyDir
+          path: /var/lib/filebeat-data
+          type: DirectoryOrCreate 

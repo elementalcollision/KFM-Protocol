@@ -1,0 +1,452 @@
+# Task ID: 15
+# Title: Conduct System Integration Testing and Documentation
+# Status: done
+# Dependencies: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
+# Priority: high
+# Description: Perform comprehensive integration testing of the complete KFM-AE system and create detailed documentation.
+# Details:
+Develop comprehensive end-to-end test scenarios covering all KFM operations and workflows. Create test agents of different types to validate the system's handling of diverse entities. Test full lifecycle transitions from NEW through all states to KILLED. Verify all services work together correctly. Create load tests to validate system performance under expected and peak loads. Document the system architecture with diagrams and descriptions. Create API documentation using OpenAPI/Swagger. Write operational runbooks for common tasks and troubleshooting. Develop user guides for administrators and agent developers.
+
+# Test Strategy:
+Execute end-to-end test scenarios manually and with automation. Verify all components work together correctly. Test under various load conditions. Review all documentation for completeness and accuracy. Conduct user acceptance testing with stakeholders.
+
+# Subtasks:
+## 1. Develop Comprehensive Test Scenarios [done]
+### Dependencies: None
+### Description: Create end-to-end test scenarios covering all KFM operations and workflows to ensure thorough integration testing.
+### Details:
+Identify key KFM operations and workflows, and design test scenarios that cover all possible interactions between components. Use techniques like top-down, bottom-up, or sandwich integration testing based on project requirements.
+
+<info added on 2025-05-03T16:05:05.051Z>
+```
+"test_scenarios": [
+  {
+    "name": "Full Agent Lifecycle",
+    "steps": [
+      "Register agent (NEW state)",
+      "Adapt agent (-> EXPERIMENTAL) and verify resource increase",
+      "Promote agent through states (-> CANDIDATE -> STABLE) with quota verification",
+      "Verify discoverability in STABLE state",
+      "Deprecate agent (-> DEPRECATED) with notification checks",
+      "Archive agent (-> ARCHIVED) with compute reclamation verification",
+      "Delete agent (-> KILLED) with full resource cleanup validation",
+      "Monitor observability signals throughout lifecycle"
+    ]
+  },
+  {
+    "name": "Policy-Driven Transition",
+    "steps": [
+      "Configure metric-based promotion policy",
+      "Create and transition agent to EXPERIMENTAL",
+      "Simulate metric threshold breach",
+      "Verify automatic promotion and resource adjustment"
+    ]
+  },
+  {
+    "name": "Resource Contention",
+    "steps": [
+      "Configure constrained quotas",
+      "Trigger simultaneous transitions exceeding quota",
+      "Verify prioritization and queueing behavior",
+      "Validate metrics for resource contention"
+    ]
+  },
+  {
+    "name": "Asynchronous Operations",
+    "steps": [
+      "Trigger long-running adaptation operation",
+      "Verify 202 response with task ID",
+      "Poll task status endpoint through state transitions",
+      "Validate final result and notifications"
+    ]
+  },
+  {
+    "name": "Failure Handling",
+    "steps": [
+      "Test invalid state transitions",
+      "Simulate infrastructure failures",
+      "Test dependency service outages",
+      "Verify error responses, logging and recovery"
+    ]
+  },
+  {
+    "name": "Security Testing",
+    "steps": [
+      "Verify authentication requirements (401 responses)",
+      "Test authorization boundaries (403 responses)",
+      "Validate secure communication between components"
+    ]
+  },
+  {
+    "name": "Observability Validation",
+    "steps": [
+      "Perform standard operation",
+      "Trace request through all components",
+      "Verify log correlation across services",
+      "Validate metric updates"
+    ]
+  }
+],
+"implementation_notes": "Use a combination of automated API tests with Postman/Newman and integration tests with TestContainers. Implement test fixtures that can simulate various failure conditions. Consider implementing a test harness that can verify the entire system state after each operation."
+```
+</info added on 2025-05-03T16:05:05.051Z>
+
+## 2. Create Test Agents and Validate Entity Handling [done]
+### Dependencies: 15.1
+### Description: Design and implement test agents of different types to validate the system's handling of diverse entities.
+### Details:
+Develop test agents that simulate various entities and interactions. Use these agents to test how the system handles different entity types and ensure compatibility across all components.
+
+<info added on 2025-05-03T16:07:01.405Z>
+```
+"implementation_details": {
+  "test_agent_profiles": {
+    "SimpleAgent": {
+      "metadata": { "name": "simple-test", "version": "1.0", "type": "basic" },
+      "resources": { "cpu": "100m", "memory": "128Mi" },
+      "lifecycle_hooks": ["init", "ready", "shutdown"]
+    },
+    "ComplexAgent": {
+      "metadata": { "name": "complex-test", "version": "2.1", "type": "advanced", "tags": ["multi-component", "stateful"] },
+      "dependencies": ["redis", "postgres", "kafka"],
+      "resources": { "cpu": "500m", "memory": "1Gi", "gpu": "0" },
+      "lifecycle_hooks": ["init", "data-load", "ready", "backup", "shutdown"]
+    },
+    "CodeAgent": {
+      "metadata": { "name": "code-test", "version": "1.2", "type": "git-linked" },
+      "git_repo": "https://github.com/example/test-agent-code",
+      "branch": "main",
+      "commit_id": "abc123",
+      "build_command": "make build"
+    },
+    "AIModelAgent": {
+      "metadata": { "name": "ai-model-test", "version": "3.0", "type": "ml" },
+      "model_artifacts": "s3://test-bucket/models/test-model.onnx",
+      "inference_config": { "batch_size": 16, "precision": "fp16" }
+    },
+    "HighResourceAgent": {
+      "metadata": { "name": "resource-hog", "version": "1.0", "type": "stress-test" },
+      "resources": { "cpu": "4000m", "memory": "8Gi", "gpu": "1" },
+      "scaling": { "min": 3, "max": 10, "target_cpu_utilization": 70 }
+    },
+    "ErrorAgent": {
+      "metadata": { "name": "error-test", "version": "1.0", "type": "fault-injection" },
+      "error_scenarios": ["startup-failure", "runtime-crash", "resource-leak", "dependency-timeout"]
+    }
+  },
+  "validation_scripts": {
+    "api_test": "test_scripts/validate_agents_api.py",
+    "k8s_validation": "test_scripts/verify_k8s_resources.sh",
+    "error_injection": "test_scripts/trigger_agent_failures.py"
+  },
+  "expected_outputs": {
+    "logs_pattern": "Agent {id} state transition: {old_state} -> {new_state}",
+    "metrics": ["agent_startup_time", "agent_resource_usage", "agent_error_count"],
+    "trace_points": ["agent_registration", "resource_allocation", "dependency_resolution"]
+  }
+}
+```
+</info added on 2025-05-03T16:07:01.405Z>
+
+## 3. Test Lifecycle Transitions and Service Integration [done]
+### Dependencies: 15.1, 15.2
+### Description: Verify full lifecycle transitions from NEW through all states to KILLED and ensure all services work together correctly.
+### Details:
+Execute tests that cover the entire lifecycle of entities in the system, ensuring that all services integrate seamlessly and that transitions between states are correctly handled.
+
+<info added on 2025-05-03T16:11:52.638Z>
+```
+{
+  "test_scenarios": [
+    {
+      "name": "Full Agent Lifecycle (Happy Path)",
+      "goal": "Verify an agent can transition through its entire lifecycle, with corresponding resource changes and system interactions.",
+      "test_agent_profile": "SimpleAgent (basic metadata, minimal initial resource request)",
+      "steps": [
+        {
+          "phase": "Registration (NEW)",
+          "action": "POST /api/v1/agent-registry/agents with SimpleAgent data",
+          "verification": [
+            "Agent exists, state=NEW",
+            "Minimal resources created (if any for NEW state)",
+            "Creation logged in Agent Registry"
+          ]
+        },
+        {
+          "phase": "Adaptation (-> EXPERIMENTAL)",
+          "action": "POST /api/v1/f-operator/agents/{id}/adapt",
+          "verification": [
+            "Agent state=EXPERIMENTAL",
+            "Deployment resources match EXPERIMENTAL quota",
+            "Logs/Traces show F-Op, Resource Mgr, Registry interaction",
+            "Metrics show resource change"
+          ]
+        },
+        {
+          "phase": "Promotion (-> CANDIDATE -> STABLE)",
+          "actions": [
+            "POST /api/v1/m-operator/agents/{id}/promote (target=CANDIDATE, +evidence)",
+            "POST /api/v1/m-operator/agents/{id}/promote (target=STABLE, +evidence/approvals)"
+          ],
+          "verification": [
+            "Agent state transitions correctly through CANDIDATE to STABLE",
+            "Resources match appropriate quota at each stage",
+            "Logs/Traces show M-Op, Resource Mgr, Registry interaction",
+            "Metrics show state changes"
+          ]
+        },
+        {
+          "phase": "Discovery (STABLE)",
+          "action": "GET /api/v1/agent-discovery/agents?state=STABLE...",
+          "verification": [
+            "Agent included in results"
+          ]
+        },
+        {
+          "phase": "Deprecation (-> DEPRECATED)",
+          "action": "POST /api/v1/k-operator/agents/{id}/deprecate",
+          "verification": [
+            "Agent state=DEPRECATED",
+            "Deprecation event published (if applicable)",
+            "Optional resource reduction occurs"
+          ]
+        },
+        {
+          "phase": "Archival (-> ARCHIVED)",
+          "action": "POST /api/v1/k-operator/agents/{id}/archive (force=true or wait)",
+          "verification": [
+            "Agent state=ARCHIVED",
+            "Deployment replicas=0, PVCs retained (if applicable)",
+            "Agent no longer discoverable by default",
+            "Logs show K-Op/Resource Mgr reclamation"
+          ]
+        },
+        {
+          "phase": "Deletion (-> KILLED / Removed)",
+          "action": "DELETE /api/v1/k-operator/agents/{id} (or POST equivalent)",
+          "verification": [
+            "Agent returns 404 or state=KILLED",
+            "ALL associated resources with label kfm.aiprotocol.com/agent-id={id} are deleted",
+            "Logs show K-Op/Resource Mgr deletion"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+</info added on 2025-05-03T16:11:52.638Z>
+
+<info added on 2025-05-03T16:13:33.355Z>
+```
+{
+  "test_scenarios": [
+    {
+      "name": "Policy-Driven Transition",
+      "goal": "Verify Policy Engine automatically triggers state transitions based on rules",
+      "test_agent_profile": "SimpleAgent or specific agent type targeted by policy",
+      "prerequisite": "Configure a policy (e.g., in `policy_engine/policies/` or via API) like: \"IF agent type is 'TestType' AND state is 'EXPERIMENTAL' AND metric 'stability_score' > 0.95 for 5m THEN transition to 'CANDIDATE'\"",
+      "steps": [
+        {
+          "phase": "Setup",
+          "action": "Register an agent of type 'TestType'. Transition it to EXPERIMENTAL",
+          "verification": []
+        },
+        {
+          "phase": "Trigger",
+          "action": "Simulate `stability_score` metric exceeding 0.95 for >5 minutes (e.g., manually push metric to Prometheus or use a test tool)",
+          "verification": [
+            "Policy Engine logs show evaluation triggering",
+            "Event published for state transition request",
+            "`GET /agents/{id}` -> Check state transitions to `CANDIDATE`",
+            "Resource Manager adjusts resources according to CANDIDATE quota",
+            "Logs/traces show Policy Engine -> M-Operator -> Agent Registry -> Resource Manager flow"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Resource Contention",
+      "goal": "Verify Resource Manager handles allocation requests correctly when quotas are limited",
+      "test_agent_profile": "HighResourceAgent or multiple SimpleAgents",
+      "prerequisite": "Configure low resource quotas for a target state in Resource Manager config",
+      "steps": [
+        {
+          "phase": "Trigger",
+          "action": "Simultaneously trigger multiple agents to transition into the target state, exceeding the quota",
+          "verification": [
+            "Resource Mgr logs indicate quota checks, prioritization, and potential rejections/queueing",
+            "Some agents get resources, while others might fail deployment or have requests modified/rejected",
+            "Some agents might remain in the previous state in Agent Registry",
+            "Resource Manager metrics show allocation attempts, failures due to quota, and quota utilization"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Asynchronous Operation Handling",
+      "goal": "Verify correct handling of long-running operations",
+      "test_agent_profile": "CodeAgent or AIModelAgent",
+      "steps": [
+        {
+          "phase": "Trigger",
+          "action": "Trigger async F-Op task (e.g., `POST /async/f-operator/adapt`)",
+          "verification": [
+            "HTTP 202 Accepted with `task_id`",
+            "`GET /tasks/{task_id}` -> Status `PENDING`/`QUEUED`",
+            "Poll `GET /tasks/{task_id}` -> Status `RUNNING`",
+            "Poll `GET /tasks/{task_id}` -> Status `COMPLETED`/`FAILED`",
+            "Check response payload for result or error message",
+            "Logs/traces show async task flow (Gateway -> Queue -> Worker -> Task Update)"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Failure Scenarios",
+      "goal": "Verify system resilience",
+      "test_agent_profile": "SimpleAgent",
+      "steps": [
+        {
+          "phase": "Invalid State Transition",
+          "action": "`POST /m-operator/agents/{id}/promote` (NEW -> STABLE)",
+          "verification": ["Verify 400 Bad Request"]
+        },
+        {
+          "phase": "K8s API Failure",
+          "action": "Make K8s API inaccessible. Trigger resource change",
+          "verification": [
+            "Error handling, logging, retry, failure status in Resource Mgr/Operator",
+            "Verify recovery when K8s API becomes available"
+          ]
+        },
+        {
+          "phase": "Service Unavailability",
+          "action": "Stop Agent Registry. Trigger dependent operation",
+          "verification": [
+            "502/503 from Gateway/caller",
+            "Circuit breaker trips",
+            "Error logging",
+            "Verify recovery when service restored"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Security & Auth",
+      "goal": "Verify authentication and authorization",
+      "steps": [
+        {
+          "phase": "Missing Auth",
+          "action": "API calls without `X-API-Key`",
+          "verification": ["Verify 401/403"]
+        },
+        {
+          "phase": "Invalid Auth",
+          "action": "API calls with incorrect `X-API-Key`",
+          "verification": ["Verify 401/403"]
+        },
+        {
+          "phase": "Insufficient Permissions",
+          "action": "Use non-admin key for restricted op (e.g., DELETE)",
+          "verification": ["Verify 403"]
+        }
+      ]
+    },
+    {
+      "name": "Observability End-to-End",
+      "goal": "Verify correlation of logs, metrics, traces",
+      "test_agent_profile": "SimpleAgent",
+      "steps": [
+        {
+          "phase": "Trigger",
+          "action": "Perform multi-step operation (e.g., register + adapt). Note request ID",
+          "verification": [
+            "Search logs by `request_id` -> Confirm correlated logs from all involved services. Check `trace_id`/`span_id`",
+            "Check relevant counters/gauges updated in Prometheus/Grafana",
+            "Search traces by `trace_id` -> Confirm single trace spans involved services with correct parent/child spans"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+</info added on 2025-05-03T16:13:33.355Z>
+
+## 4. Conduct Load Testing for Performance Validation [done]
+### Dependencies: 15.3
+### Description: Create and execute load tests to validate system performance under expected and peak loads.
+### Details:
+Design load tests that simulate both expected and peak usage scenarios. Use tools like Apache JMeter or Gatling to execute these tests and analyze performance metrics such as response time and throughput.
+
+<info added on 2025-05-03T16:16:21.448Z>
+## Load Testing Plan
+
+### Tool Selection
+- **Primary Tool**: Locust (Python-based) for its distributed testing capabilities and easy-to-write Python test scenarios
+- **Supporting Tools**: Prometheus for metrics collection, Grafana for visualization
+
+### Detailed Test Scenarios
+
+1. **High Agent Read/Discovery Test**
+   - Create user behavior that randomizes filter combinations
+   - Implement ramp-up pattern: 0 to 500 users over 5 minutes, sustain for 15 minutes
+   - Add pagination testing with varying page sizes (10, 50, 100, 500)
+   - Monitor database query execution time alongside API response time
+
+2. **Concurrent Registrations Test**
+   - Implement data generation for unique agent payloads with varying complexity
+   - Test both valid and invalid registration attempts (10% invalid)
+   - Include duplicate registration attempts to test idempotency
+   - Measure database connection pool saturation
+
+3. **State Transition Load Test**
+   - Create test fixtures with agents in various initial states
+   - Implement complex transition sequences (e.g., PENDING→READY→ACTIVE→MAINTENANCE)
+   - Test concurrent transitions on the same agent to verify locking mechanisms
+   - Monitor event queue backlog during transitions
+
+4. **API Gateway Performance**
+   - Implement realistic user session patterns with authentication
+   - Test with and without API caching enabled to measure improvement
+   - Include header variation to test routing logic under load
+   - Monitor backend service health during gateway tests
+
+5. **F-Operator Adaptation Test**
+   - Generate adaptation payloads of varying complexity and size
+   - Test recovery scenarios (adaptation during high system load)
+   - Measure task queue growth rate and processing rate
+   - Test timeout and retry mechanisms under load
+
+### Test Environment Configuration
+- Deploy with production-like resource limits but scaled down (33% of production nodes)
+- Configure database with similar schema but reduced resources
+- Enable detailed logging only for error cases to minimize performance impact
+- Create baseline measurements before each test for comparison
+
+### Analysis Methodology
+- Define specific SLAs for each endpoint (e.g., p95 < 200ms, p99 < 500ms)
+- Create performance regression detection by comparing to previous test runs
+- Generate per-component reports highlighting bottlenecks
+- Document scaling recommendations based on resource utilization patterns
+</info added on 2025-05-03T16:16:21.448Z>
+
+## 5. Document System Architecture [done]
+### Dependencies: None
+### Description: Create detailed documentation of the system architecture, including diagrams and descriptions.
+### Details:
+Use tools like Visio or PlantUML to create architectural diagrams. Write accompanying descriptions to explain the role of each component and how they interact within the system.
+
+## 6. Develop API Documentation and Operational Runbooks [done]
+### Dependencies: 15.5
+### Description: Create API documentation using OpenAPI/Swagger and write operational runbooks for common tasks and troubleshooting.
+### Details:
+Use OpenAPI/Swagger to generate API documentation that includes endpoint descriptions, request/response formats, and examples. Develop operational runbooks that outline procedures for common tasks and troubleshooting steps.
+
+## 7. Create User Guides for Administrators and Agent Developers [done]
+### Dependencies: 15.6
+### Description: Develop user guides for administrators and agent developers to facilitate effective system usage.
+### Details:
+Write user guides that cover setup, configuration, and usage of the system for both administrators and agent developers. Include step-by-step instructions and troubleshooting tips to ensure smooth adoption.
+

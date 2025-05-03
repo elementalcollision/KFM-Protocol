@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k-operator-deployment
+  namespace: kfm-operators # Use the same namespace as F operator
+  labels:
+    app: k-operator
+spec:
+  replicas: 1 # Start with 1, can scale later
+  selector:
+    matchLabels:
+      app: k-operator
+  template:
+    metadata:
+      labels:
+        app: k-operator
+      # Add annotations for Prometheus scraping
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8000' 
+    spec:
+      # Service Account needed for K8s API access
+      serviceAccountName: k-operator-sa # Needs to be created separately with RBAC
+      containers:
+        - name: k-operator
+          # Replace with your actual image name/registry path
+          image: your-registry/kfm-k-operator:latest 
+          ports:
+            - containerPort: 8000 # Port the application listens on
+              name: http
+          # Liveness and readiness probes
+          livenessProbe:
+            httpGet:
+              path: /health # Assuming a /health endpoint exists
+              port: 8000
+            initialDelaySeconds: 20 
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # Define resource requests and limits
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m" 
+            limits:
+              memory: "512Mi"
+              cpu: "500m" 
+          # Environment variables from ConfigMaps or Secrets
+          envFrom:
+            - configMapRef:
+                name: k-operator-config
+            - secretRef:
+                name: k-operator-secrets 

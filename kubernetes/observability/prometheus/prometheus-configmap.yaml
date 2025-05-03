@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: kfm-observability
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s # Default scrape interval
+      evaluation_interval: 15s
+
+    # Load rules once and periodically evaluate them according to global 'evaluation_interval'.
+    rule_files:
+      - /etc/prometheus/rules/kfm-alerts.rules.yml
+      # Add other rule files here if needed
+      # - "/etc/prometheus/rules/*.rules.yml"
+
+    scrape_configs:
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            # Optional: Limit discovery to specific namespaces
+            # namespaces:
+            #   names:
+            #     - kfm-agents
+            #     - kfm-operators
+            #     - kfm-gateway
+        relabel_configs:
+          # Example: Scrape only pods with the annotation 'prometheus.io/scrape=true'
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          # Example: Scrape on the port specified by 'prometheus.io/port' annotation
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)
+            replacement: ${1}
+          # Example: Use the path specified by 'prometheus.io/path' annotation, default to /metrics
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+            replacement: ${1}
+          # Example: Add pod name as a label
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          # Example: Add namespace as a label
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          # Example: Add container name as a label
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: replace
+            target_label: container
+          # Add other relabeling rules as needed
+
+      # Add other scrape jobs if needed (e.g., for Kubernetes API server, nodes, etc.)
+      # - job_name: 'kubernetes-apiservers'
+      #   kubernetes_sd_configs:
+      #   - role: endpoints
+      #   ... 

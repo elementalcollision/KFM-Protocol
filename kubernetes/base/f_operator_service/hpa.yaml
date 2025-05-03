@@ -1,0 +1,28 @@
+apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: f-operator-hpa
+      namespace: kfm-operators # Use the same namespace as the Deployment
+      labels:
+        app: f-operator
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: f-operator-deployment # Name of the Deployment to scale
+      minReplicas: 1 # Matches Deployment initial replicas
+      maxReplicas: 3 # Allow scaling up to 3 replicas
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70 # Target 70% CPU utilization
+        - type: Resource
+          resource:
+            name: memory
+            target:
+              type: Utilization
+              averageUtilization: 75 # Target 75% Memory utilization
+    

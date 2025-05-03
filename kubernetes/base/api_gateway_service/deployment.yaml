@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-deployment
+  namespace: kfm-gateway # Define a namespace (or adjust as needed)
+  labels:
+    app: api-gateway
+spec:
+  replicas: 2 # Start with 2 replicas for basic availability
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+      # Add annotations for Prometheus scraping (assuming port 8000 for metrics)
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8000' 
+    spec:
+      containers:
+        - name: api-gateway
+          # Replace with your actual image name/registry path
+          image: your-registry/kfm-api-gateway:latest 
+          ports:
+            - containerPort: 8000 # Port the application listens on
+              name: http
+          # Basic liveness and readiness probes
+          livenessProbe:
+            httpGet:
+              path: /health # Assuming a /health endpoint exists
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # Define resource requests and limits
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m" # 0.2 CPU cores
+            limits:
+              memory: "512Mi"
+              cpu: "500m" # 0.5 CPU cores
+          # Add environment variables from ConfigMaps or Secrets if needed
+          # envFrom:
+          #   - configMapRef:
+          #       name: api-gateway-config
+          #   - secretRef:
+          #       name: api-gateway-secrets 

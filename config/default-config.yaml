@@ -1,0 +1,74 @@
+# Default non-sensitive configuration for KFM-AE services
+# Loaded with lowest priority. Overridden by .env and Environment Variables.
+
+# Global Settings
+APP_ENV: "development" # Environment mode (development, production, test)
+LOG_LEVEL: "INFO"      # Default logging level
+
+# Agent Registry Service
+PROJECT_NAME: "KFM Agent Registry Service"
+API_V1_STR: "/api/v1"
+POSTGRES_PORT: "5432"
+ACCESS_TOKEN_EXPIRE_MINUTES: 10080 # 7 days in minutes
+# Add agent registry specific non-sensitive defaults here if needed
+# e.g., AGENT_REGISTRY_DEFAULT_PAGE_SIZE: 50
+
+# JWT Settings
+ALGORITHM: "HS256"       # Default JWT algorithm
+
+# Policy Engine (Example Defaults)
+# POLICY_ENGINE_EVALUATION_INTERVAL_SECONDS: 300
+# POLICY_ENGINE_DEFAULT_ACTION: "LOG"
+
+# K Operator (Example Defaults)
+# K_OPERATOR_DEFAULT_GRACE_PERIOD_DAYS: 14
+
+# M Operator (Example Defaults)
+# M_OPERATOR_PROMOTION_APPROVALS_REQUIRED: 2
+
+# F Operator (Example Defaults)
+# F_OPERATOR_EXPERIMENT_DURATION_HOURS: 48
+
+# M Operator Specific Defaults (can be overridden by .env)
+MAINTENANCE_REVIEW_INTERVAL_DAYS: 90
+MAINTENANCE_SCHEDULER_HOUR: 2
+MAINTENANCE_SCHEDULER_MINUTE: 0
+MAINTENANCE_SCHEDULER_DAY_OF_WEEK: "sun"
+
+# --- Feature Flags --- 
+# Define default feature flags here. These can be overridden by experiment service.
+feature_flags:
+  - name: "example_experiment_flag"
+    description: "Controls the example experiment"
+    is_active: false
+    rules: []
+  - name: "new_adaptation_algorithm"
+    description: "Enable a new adaptation algorithm for testing"
+    is_active: true # Example of an active flag
+    rules:
+      - type: "percentage"
+        value: 10 # Enable for 10% of requests/agents (requires context) 
+
+# --- Approval Workflows --- #
+# Defines stakeholder roles and logic for promotion approvals
+approval_workflows:
+  default:
+    description: "Standard approval process"
+    roles:
+      - role: "SECURITY_REVIEWER"
+        required: true
+        order: 1
+      - role: "DOMAIN_EXPERT"
+        required: true
+        order: 2
+      - role: "OPERATIONS_MANAGER"
+        required: true
+        order: 3
+  expedited:
+    description: "Faster process for low-risk promotions"
+    threshold: 1 # Only one approval needed from any role
+    roles:
+      - role: "TEAM_LEAD"
+        required: false
+      - role: "OPERATIONS_MANAGER"
+        required: true # Still needs ops sign-off 

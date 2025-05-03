@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: resource-manager-pdb
+  namespace: kfm-system # Use the same namespace as the Deployment
+  labels:
+    app: resource-manager
+spec:
+  # Ensure at least 1 replica is available during disruptions
+  minAvailable: 1 
+  selector:
+    matchLabels:
+      app: resource-manager # Selects the pods managed by the resource-manager Deployment 

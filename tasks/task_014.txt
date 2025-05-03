@@ -1,0 +1,514 @@
+# Task ID: 14
+# Title: Develop Admin UI for KFM Operations
+# Status: done
+# Dependencies: 8, 10
+# Priority: low
+# Description: Create a web-based user interface for administrators to monitor and manage KFM operations.
+# Details:
+Build a web-based admin UI that interfaces with the KFM-AE API. Implement dashboards showing system status, agent counts by state, recent KFM operations, etc. Create interfaces for managing agents (viewing details, triggering K/F/M operations). Implement policy management screens for viewing and editing KFM policies. Create visualizations of agent dependencies and relationships. Implement user management for admin accounts with appropriate role-based access controls. Support audit logging of all admin actions.
+
+# Test Strategy:
+Test UI functionality across different browsers. Verify all KFM operations can be performed through the UI. Test role-based access controls. Verify dashboards accurately reflect system state. Test usability with administrators.
+
+# Subtasks:
+## 1. Set Up Admin UI Framework and Core Layout [done]
+### Dependencies: None
+### Description: Establish the foundational structure for the admin UI, including navigation, responsive layout, and integration with authentication mechanisms.
+### Details:
+Select a suitable front-end framework (such as React, Angular, or Vue). Implement a multi-column layout with a persistent sidebar for navigation, following admin panel best practices for usability and clarity[3]. Integrate authentication to ensure only authorized admins can access the UI. Set up routing for major modules (dashboard, agent management, policy management, user management, audit logs). Ensure the layout is responsive and accessible across devices[2][3].
+
+<info added on 2025-05-03T15:44:11.161Z>
+```javascript
+// Implementation Plan
+
+// 1. Project Setup
+npx create-react-app kfm-admin-ui
+cd kfm-admin-ui
+npm install react-admin ra-data-json-server @mui/material @emotion/react @emotion/styled
+
+// 2. Core Layout Implementation
+// src/App.js
+import { Admin, Resource, Layout, AppBar, Menu } from 'react-admin';
+import { Dashboard } from './components/Dashboard';
+import { AgentList, AgentEdit, AgentCreate } from './components/Agents';
+import { PolicyList, PolicyEdit, PolicyCreate } from './components/Policies';
+import { UserList, UserEdit, UserCreate } from './components/Users';
+import { AuditLogList } from './components/AuditLogs';
+import { authProvider } from './auth/authProvider';
+import { dataProvider } from './api/dataProvider';
+
+// Custom AppBar with KFM branding
+const CustomAppBar = props => (
+  <AppBar {...props} userMenu={<UserMenu />} />
+);
+
+// Custom sidebar menu with KFM-specific navigation
+const CustomMenu = props => (
+  <Menu {...props}>
+    <Menu.DashboardItem />
+    <Menu.Item to="/agents" primaryText="Agent Management" />
+    <Menu.Item to="/policies" primaryText="Policy Management" />
+    <Menu.Item to="/users" primaryText="User Management" />
+    <Menu.Item to="/audit-logs" primaryText="Audit Logs" />
+  </Menu>
+);
+
+// Custom layout combining the components
+const CustomLayout = props => (
+  <Layout
+    {...props}
+    appBar={CustomAppBar}
+    menu={CustomMenu}
+    // Responsive configuration
+    sidebar={{
+      width: 240,
+      closedWidth: 55,
+      breakpoint: 'sm', // Collapse on small screens
+    }}
+  />
+);
+
+// Main application structure
+const App = () => (
+  <Admin
+    dashboard={Dashboard}
+    authProvider={authProvider}
+    dataProvider={dataProvider}
+    layout={CustomLayout}
+    title="Kubernetes Fleet Manager"
+    disableTelemetry
+  >
+    <Resource name="agents" list={AgentList} edit={AgentEdit} create={AgentCreate} />
+    <Resource name="policies" list={PolicyList} edit={PolicyEdit} create={PolicyCreate} />
+    <Resource name="users" list={UserList} edit={UserEdit} create={UserCreate} />
+    <Resource name="audit-logs" list={AuditLogList} />
+  </Admin>
+);
+
+// 3. Authentication Provider
+// src/auth/authProvider.js
+export const authProvider = {
+  login: ({ username, password }) => {
+    return fetch('https://api.kfm.example.com/auth/token', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(response => {
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(response.statusText);
+        }
+        return response.json();
+      })
+      .then(auth => {
+        localStorage.setItem('auth', JSON.stringify(auth));
+        localStorage.setItem('token', auth.token);
+      });
+  },
+  checkAuth: () => {
+    return localStorage.getItem('token') ? Promise.resolve() : Promise.reject();
+  },
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('auth');
+    return Promise.resolve();
+  },
+  getPermissions: () => {
+    const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+    return Promise.resolve(auth.permissions);
+  },
+};
+```
+</info added on 2025-05-03T15:44:11.161Z>
+
+## 2. Implement Dashboards and Monitoring Interfaces [done]
+### Dependencies: 14.1
+### Description: Develop dashboard components to display system status, agent counts by state, recent KFM operations, and visualizations of agent dependencies.
+### Details:
+Connect to the KFM-AE API to fetch real-time data. Build dashboard widgets for system health, agent statistics, and recent operations. Use charts and graphs to visualize agent dependencies and relationships, ensuring information is clear and actionable. Apply UI patterns that emphasize simplicity and highlight key metrics[2][5].
+
+<info added on 2025-05-03T15:44:35.835Z>
+Here's additional implementation information for the dashboard task:
+
+```javascript
+// Implementation approach for Dashboard component
+import React, { useState, useEffect } from 'react';
+import { useDataProvider } from 'react-admin';
+import { Card, CardContent, Grid, Typography, Box } from '@mui/material';
+import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import ReactFlow from 'react-flow-renderer';
+
+// Custom hook for dashboard data
+const useDashboardData = () => {
+  const dataProvider = useDataProvider();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState(null);
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [systemStats, agentStats, recentOps] = await Promise.all([
+          dataProvider.getOne('system/health', {}),
+          dataProvider.getList('agents/stats', { pagination: { page: 1, perPage: 100 } }),
+          dataProvider.getList('operations', { 
+            pagination: { page: 1, perPage: 5 },
+            sort: { field: 'timestamp', order: 'DESC' } 
+          }),
+        ]);
+        
+        setStats({ systemStats, agentStats, recentOps });
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+    // Set up polling interval for real-time updates
+    const interval = setInterval(fetchData, 30000); // 30-second refresh
+    return () => clearInterval(interval);
+  }, [dataProvider]);
+  
+  return { loading, stats };
+};
+
+// Agent dependency visualization component
+const AgentDependencyGraph = ({ agents }) => {
+  // Transform agent data into nodes and edges for ReactFlow
+  const elements = React.useMemo(() => {
+    const nodes = agents.map(agent => ({
+      id: agent.id,
+      data: { label: agent.name },
+      position: { x: Math.random() * 500, y: Math.random() * 500 },
+      style: { 
+        background: agent.state === 'STABLE' ? '#4caf50' : 
+                   agent.state === 'EXPERIMENTAL' ? '#ff9800' : '#2196f3',
+        border: '1px solid #222138',
+        borderRadius: 5,
+        padding: 10,
+      }
+    }));
+    
+    const edges = [];
+    agents.forEach(agent => {
+      if (agent.dependencies) {
+        agent.dependencies.forEach(depId => {
+          edges.push({
+            id: `${agent.id}-${depId}`,
+            source: agent.id,
+            target: depId,
+            type: 'smoothstep',
+            animated: true,
+          });
+        });
+      }
+    });
+    
+    return [...nodes, ...edges];
+  }, [agents]);
+  
+  return (
+    <Box height="400px">
+      <ReactFlow 
+        elements={elements}
+        defaultZoom={1.5}
+        minZoom={0.2}
+        maxZoom={4}
+      />
+    </Box>
+  );
+};
+
+// Sample implementation of status indicators with tooltips
+const StatusIndicator = ({ status, label }) => {
+  const colors = {
+    healthy: '#4caf50',
+    warning: '#ff9800',
+    error: '#f44336',
+    unknown: '#9e9e9e'
+  };
+  
+  return (
+    <Box display="flex" alignItems="center" mb={1}>
+      <Box
+        width={12}
+        height={12}
+        borderRadius="50%"
+        bgcolor={colors[status] || colors.unknown}
+        mr={1}
+      />
+      <Typography variant="body2">{label}</Typography>
+    </Box>
+  );
+};
+```
+
+This implementation includes a custom data fetching hook with polling for real-time updates, a dependency visualization component using ReactFlow, and status indicators with appropriate color coding. The approach separates concerns between data fetching and presentation, making the dashboard maintainable as requirements evolve.
+</info added on 2025-05-03T15:44:35.835Z>
+
+## 3. Develop Management Interfaces for Agents and Policies [done]
+### Dependencies: 14.2
+### Description: Create detailed management screens for agents and KFM policies, supporting viewing, editing, and triggering K/F/M operations.
+### Details:
+Implement agent management screens with lists, search/filter options, and detail views. Provide controls for triggering K/F/M operations directly from the UI. Build policy management interfaces for viewing and editing KFM policies, using specialized controls (e.g., toggles, dropdowns) to enhance usability[5]. Ensure all actions are context-sensitive and minimize clutter by showing controls only when relevant.
+
+<info added on 2025-05-03T15:45:04.740Z>
+```typescript
+// Implementation details for Agent Management
+
+// Agent List component with advanced filtering
+const AgentList = () => (
+  <List 
+    filters={[
+      <TextInput label="Search" source="q" alwaysOn />,
+      <SelectInput source="state" choices={[
+        { id: 'active', name: 'Active' },
+        { id: 'deprecated', name: 'Deprecated' },
+        { id: 'pending', name: 'Pending' },
+      ]} />,
+      <ReferenceInput source="policyId" reference="policies">
+        <AutocompleteInput optionText="name" />
+      </ReferenceInput>
+    ]}
+    sort={{ field: 'lastUpdated', order: 'DESC' }}
+  >
+    <Datagrid rowClick="show">
+      <TextField source="id" />
+      <TextField source="name" />
+      <TextField source="type" />
+      <TextField source="version" />
+      <ChipField source="state" />
+      <DateField source="lastUpdated" showTime />
+      <AgentActionsField /> {/* Custom component for quick actions */}
+    </Datagrid>
+  </List>
+);
+
+// Custom actions component for K/F/M operations
+const AgentActionsField = () => {
+  const record = useRecordContext();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  
+  const triggerOperation = async (operation) => {
+    try {
+      await dataProvider.custom(`agents/${record.id}/${operation}`, { method: 'POST' });
+      notify(`Operation ${operation} triggered successfully`, { type: 'success' });
+    } catch (error) {
+      notify(`Error: ${error.message}`, { type: 'error' });
+    }
+  };
+  
+  return (
+    <Box>
+      <Tooltip title="Kill">
+        <IconButton onClick={() => triggerOperation('kill')} disabled={record.state !== 'active'}>
+          <StopCircleIcon color="error" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Fork">
+        <IconButton onClick={() => triggerOperation('fork')}>
+          <ContentCopyIcon color="primary" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Modify">
+        <IconButton onClick={() => triggerOperation('modify')}>
+          <EditIcon color="primary" />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
+};
+
+// Policy Edit with YAML editor and validation
+const PolicyEdit = () => (
+  <Edit>
+    <SimpleForm validate={validatePolicy}>
+      <TextInput source="name" validate={required()} fullWidth />
+      <TextInput source="description" multiline rows={3} fullWidth />
+      <SelectInput 
+        source="type" 
+        choices={[
+          { id: 'kill', name: 'Kill Policy' },
+          { id: 'fork', name: 'Fork Policy' },
+          { id: 'modify', name: 'Modification Policy' },
+        ]} 
+        validate={required()}
+      />
+      <Box mt={2} mb={2}>
+        <Typography variant="subtitle1">Policy Definition</Typography>
+        <CodeInput 
+          source="definition" 
+          language="yaml" 
+          fullWidth
+          options={{ 
+            minLines: 20, 
+            maxLines: 40,
+            showPrintMargin: false,
+            showGutter: true
+          }}
+        />
+      </Box>
+      <PolicyTestButton /> {/* Custom component to test policy against sample data */}
+    </SimpleForm>
+  </Edit>
+);
+
+// Validation function for policy definition
+const validatePolicy = (values) => {
+  const errors = {};
+  try {
+    if (values.definition) {
+      const parsed = yaml.load(values.definition);
+      // Add specific validation logic based on policy type
+      if (values.type === 'kill' && !parsed.conditions) {
+        errors.definition = 'Kill policy must define conditions';
+      }
+    }
+  } catch (e) {
+    errors.definition = `Invalid YAML: ${e.message}`;
+  }
+  return errors;
+};
+```
+</info added on 2025-05-03T15:45:04.740Z>
+
+## 4. Add User Management, Role-Based Access, and Audit Logging [done]
+### Dependencies: 14.3
+### Description: Integrate user management features, enforce role-based access controls, and implement audit logging for all admin actions.
+### Details:
+Develop user management screens for admin accounts, allowing creation, editing, and role assignment. Enforce role-based access throughout the UI to restrict sensitive operations. Implement audit logging for all admin actions, ensuring logs are accessible for review. Ensure the UI clearly communicates permissions and access restrictions to users.
+
+<info added on 2025-05-03T15:45:27.090Z>
+### Implementation Plan Details
+
+#### User Management Implementation
+```jsx
+// User management components
+const UserList = () => (
+  <List>
+    <Datagrid rowClick="edit">
+      <TextField source="id" />
+      <TextField source="username" />
+      <TextField source="email" />
+      <ReferenceField source="role_id" reference="roles">
+        <TextField source="name" />
+      </ReferenceField>
+      <BooleanField source="is_active" />
+      <DateField source="last_login" />
+      <EditButton />
+    </Datagrid>
+  </List>
+);
+
+const UserEdit = () => (
+  <Edit>
+    <SimpleForm>
+      <TextInput source="username" disabled />
+      <TextInput source="email" />
+      <ReferenceInput source="role_id" reference="roles">
+        <SelectInput optionText="name" />
+      </ReferenceInput>
+      <BooleanInput source="is_active" />
+      <PasswordInput source="password" />
+    </SimpleForm>
+  </Edit>
+);
+```
+
+#### RBAC Implementation
+```jsx
+// Permission context setup
+const PermissionsContext = React.createContext();
+
+export const PermissionsProvider = ({ children }) => {
+  const [permissions, setPermissions] = useState([]);
+  const { identity } = useGetIdentity();
+  
+  useEffect(() => {
+    if (identity?.id) {
+      authProvider.getPermissions().then(setPermissions);
+    }
+  }, [identity]);
+  
+  return (
+    <PermissionsContext.Provider value={permissions}>
+      {children}
+    </PermissionsContext.Provider>
+  );
+};
+
+// Custom hook for permission checks
+export const useCanAccess = (resource, action) => {
+  const permissions = useContext(PermissionsContext);
+  return permissions.some(p => p.resource === resource && p.action === action);
+};
+```
+
+#### Audit Logging Implementation
+```jsx
+// Audit log list with filters
+const AuditLogList = () => (
+  <List 
+    filters={[
+      <DateInput source="date_gte" label="From" alwaysOn />,
+      <DateInput source="date_lte" label="To" alwaysOn />,
+      <ReferenceInput source="user_id" reference="users" label="User">
+        <AutocompleteInput optionText="username" />
+      </ReferenceInput>,
+      <SelectInput source="action" choices={[
+        { id: 'create', name: 'Create' },
+        { id: 'update', name: 'Update' },
+        { id: 'delete', name: 'Delete' },
+      ]} />
+    ]}
+    sort={{ field: 'timestamp', order: 'DESC' }}
+  >
+    <Datagrid>
+      <DateField source="timestamp" showTime />
+      <ReferenceField source="user_id" reference="users">
+        <TextField source="username" />
+      </ReferenceField>
+      <TextField source="action" />
+      <TextField source="entity_type" />
+      <TextField source="entity_id" />
+      <FunctionField 
+        label="Details" 
+        render={record => (
+          <Button onClick={() => showDetailsDialog(record.details)}>
+            View Details
+          </Button>
+        )}
+      />
+      <TextField source="ip_address" />
+    </Datagrid>
+  </List>
+);
+```
+
+#### DataProvider Integration for Audit Logging
+```javascript
+// Enhanced dataProvider to automatically log actions
+const enhanceDataProviderWithAuditLogging = (dataProvider) => ({
+  ...dataProvider,
+  create: async (resource, params) => {
+    const result = await dataProvider.create(resource, params);
+    await dataProvider.create('auditlogs', {
+      data: {
+        timestamp: new Date(),
+        user_id: identity.id,
+        action: 'create',
+        entity_type: resource,
+        entity_id: result.data.id,
+        details: JSON.stringify(params.data),
+        ip_address: await fetchClientIP()
+      }
+    });
+    return result;
+  },
+  // Similar implementations for update and delete
+});
+```
+</info added on 2025-05-03T15:45:27.090Z>
+

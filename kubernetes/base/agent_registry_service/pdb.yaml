@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agent-registry-pdb
+  namespace: kfm-agents # Use the same namespace as the Deployment
+  labels:
+    app: agent-registry
+spec:
+  # Ensure at least 1 replica is available during disruptions
+  minAvailable: 1 
+  selector:
+    matchLabels:
+      app: agent-registry # Selects the pods managed by the agent-registry Deployment 

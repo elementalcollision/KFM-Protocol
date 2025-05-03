@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-registry-deployment
+  namespace: kfm-agents # Define a namespace (or adjust as needed)
+  labels:
+    app: agent-registry
+spec:
+  replicas: 1 # Start with 1, can scale later if needed
+  selector:
+    matchLabels:
+      app: agent-registry
+  template:
+    metadata:
+      labels:
+        app: agent-registry
+      # Add annotations for Prometheus scraping (assuming port 8000 for metrics)
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8000' 
+    spec:
+      containers:
+        - name: agent-registry
+          # Replace with your actual image name/registry path
+          image: your-registry/kfm-agent-registry:latest 
+          ports:
+            - containerPort: 8000 # Port the application listens on
+              name: http
+          # Liveness and readiness probes
+          livenessProbe:
+            httpGet:
+              path: /health # Assuming a /health endpoint exists
+              port: 8000
+            initialDelaySeconds: 20 # Might need longer if DB connection is slow
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # Define resource requests and limits
+          resources:
+            requests:
+              memory: "512Mi" # Potentially more memory for in-memory cache/state
+              cpu: "250m" 
+            limits:
+              memory: "1Gi"
+              cpu: "1" # 1 CPU core
+          # Needs environment variables for DB connection, secrets, etc.
+          envFrom:
+            # Example: Load non-sensitive config from a ConfigMap
+            - configMapRef:
+                name: agent-registry-config
+            # Example: Load sensitive data like DB password from a Secret
+            - secretRef:
+                name: agent-registry-secrets 

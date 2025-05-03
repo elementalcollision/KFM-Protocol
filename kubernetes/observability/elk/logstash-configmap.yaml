@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: kfm-observability # Use the same namespace
+  labels:
+    app: logstash
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    # Add other Logstash settings if needed
+    # pipeline.workers: 2
+  pipelines.yml: |
+    # Define the main pipeline
+    - pipeline.id: main
+      path.config: "/usr/share/logstash/pipeline/logstash.conf"
+
+  logstash.conf: |
+    input {
+      beats {
+        port => 5044
+      }
+    }
+
+    filter {
+      # Only process logs from our target namespaces
+      if [kubernetes][namespace] and [kubernetes][namespace] =~ /^kfm-/ {
+        
+        # Attempt to parse the log message as JSON
+        json {
+          source => "message"
+          target => "log_data" # Store parsed JSON under 'log_data'
+          skip_on_invalid_json => true # Don't fail if a log line isn't JSON
+        }
+
+        # If parsing was successful, try extracting common fields
+        if [log_data] {
+          # Extract fields from parsed JSON log
+          mutate {
+            add_field => {
+              "request_id" => "%{[log_data][request_id]}"
+              "trace_id" => "%{[log_data][trace_id]}"
+              "span_id" => "%{[log_data][span_id]}"
+              "log_level" => "%{[log_data][level]}"
+              "logger_name" => "%{[log_data][name]}"
+              # Add other fields present in your JSON logs
+            }
+            # Remove the original log_data field if desired
+            # remove_field => ["log_data"]
+          }
+        }
+        
+        # Add Kubernetes metadata if not already present
+        # (Filebeat processor should handle this, but can be added here as fallback)
+        # kubernetes {
+        #   # Configuration... 
+        # }
+        
+        # Add GeoIP lookup based on source IP (optional)
+        # geoip {
+        #   source => "[client][ip]"
+        # }
+      }
+       else {
+         # Drop logs not matching the namespace condition
+         drop { }
+       }
+    }
+
+    output {
+      elasticsearch {
+        hosts => ["elasticsearch-service.kfm-observability.svc.cluster.local:9200"] # Use Elasticsearch service name
+        index => "kfm-log-%{[kubernetes][namespace]:unknown}-%{+YYYY.MM.dd}" # Dynamic index based on namespace and date
+        # Optional: Add user/password if Elasticsearch is secured
+        # user => "${ELASTICSEARCH_USERNAME}"
+        # password => "${ELASTICSEARCH_PASSWORD}"
+        # manage_template => false # Set to true if you want Logstash to manage the template
+        # template_name => "kfm-logs"
+        # template => "/path/to/template.json"
+      }
+      # Optional: Output to stdout for debugging
+      # stdout { codec => rubydebug }
+    } 

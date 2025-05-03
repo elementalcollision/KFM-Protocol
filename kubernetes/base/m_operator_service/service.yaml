@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: m-operator-service
+  namespace: kfm-operators # Use the same namespace as the Deployment
+  labels:
+    app: m-operator
+spec:
+  selector:
+    app: m-operator # Selects pods with the 'app: m-operator' label
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000 # Port the service listens on
+      targetPort: 8000 # Port the container listens on (from Deployment)
+  # Expose internally within the cluster
+  type: ClusterIP 

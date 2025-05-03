@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: kfm-observability
+  labels:
+    app: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:latest # Use a recent version, pin if needed
+        ports:
+        - containerPort: 6831 # UDP - Jaeger Thrift Compact Protocol
+          protocol: UDP
+          name: jaeger-compact
+        - containerPort: 6832 # UDP - Jaeger Thrift Binary Protocol
+          protocol: UDP
+          name: jaeger-binary
+        - containerPort: 5778 # HTTP - Jaeger Thrift HTTP Protocol
+          protocol: TCP
+          name: jaeger-http
+        - containerPort: 16686 # HTTP - Jaeger UI
+          protocol: TCP
+          name: jaeger-ui
+        - containerPort: 14268 # HTTP - Jaeger Collector HTTP
+          protocol: TCP
+          name: coll-http
+        - containerPort: 14250 # HTTP - Jaeger Collector GRPC
+          protocol: TCP
+          name: coll-grpc
+        - containerPort: 9411 # Zipkin compatible endpoint
+          protocol: TCP
+          name: zipkin
+        - containerPort: 4317 # OTLP gRPC endpoint
+          protocol: TCP
+          name: otlp-grpc
+        - containerPort: 4318 # OTLP HTTP endpoint
+          protocol: TCP
+          name: otlp-http
+        env:
+          # Configure storage (in-memory is default for all-in-one)
+          - name: SPAN_STORAGE_TYPE
+            value: memory
+          # Set collector endpoint for OTLP/HTTP
+          - name: COLLECTOR_OTLP_ENABLED
+            value: "true"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query # Service for the UI
+  namespace: kfm-observability
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+  - name: jaeger-ui
+    port: 16686
+    targetPort: 16686
+    protocol: TCP
+  type: ClusterIP # Expose UI internally, use NodePort or Ingress for external access
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector # Service for OTLP/HTTP endpoint
+  namespace: kfm-observability
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+    protocol: TCP
+  # Add other collector ports (gRPC, Jaeger specific) if needed
+  type: ClusterIP 

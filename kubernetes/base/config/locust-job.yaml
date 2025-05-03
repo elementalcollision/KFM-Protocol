@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: locust-load-test
+  namespace: f-operator
+spec:
+  template:
+    spec:
+      containers:
+      - name: locust
+        image: locustio/locust:2.24.1
+        command: ["locust", "-f", "/mnt/locust/locustfile.py", "--headless", "-u", "50", "-r", "10", "--run-time", "2m", "--host", "http://api-gateway-service:8000"]
+        volumeMounts:
+        - name: locustfile
+          mountPath: /mnt/locust
+      restartPolicy: Never
+      volumes:
+      - name: locustfile
+        configMap:
+          name: locustfile-config
+  backoffLimit: 1 
