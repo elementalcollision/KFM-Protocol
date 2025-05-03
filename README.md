@@ -34,7 +34,7 @@ See the [System Architecture Documentation](docs/architecture.md) for a detailed
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/elementalcollision/KFM-Protocol.git
     cd KFMEvolution
     ```
 
